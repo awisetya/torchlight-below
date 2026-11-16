@@ -592,6 +592,29 @@ for (let i = 0; i < 4; i++) {
   torches.push({ g, flame, light, hl, seed: Math.random() * 10 });
 }
 const propLight = new T.PointLight(0x7fe0ff, 0, 7, 2); scene.add(propLight);
+/* ---------- adaptive quality: drops a tier when frames run slow ---------- */
+const QUAL = [{ dpr: 2, sm: 2048, soft: true, lights: 4 }, { dpr: 1.5, sm: 1024, soft: false, lights: 4 }, { dpr: 1.25, sm: 1024, soft: false, lights: 2 }, { dpr: 1, sm: 512, soft: false, lights: 2 }];
+let qLv = isTouch ? 1 : 0;
+try { const sq = +localStorage.getItem('tb-q'); if (sq > qLv && sq < QUAL.length) qLv = sq; } catch (e) {}
+function applyQual() {
+  const q = QUAL[qLv];
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.dpr)); resize();
+  const type = q.soft ? T.PCFSoftShadowMap : T.PCFShadowMap;
+  if (renderer.shadowMap.type !== type) { renderer.shadowMap.type = type; scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => { m.needsUpdate = true; }); }); }
+  if (moon.shadow.mapSize.x !== q.sm) { moon.shadow.mapSize.set(q.sm, q.sm); if (moon.shadow.map) { moon.shadow.map.dispose(); moon.shadow.map = null; } }
+  torches.forEach((t, i) => { t.light.visible = i < q.lights; });
+}
+applyQual();
+const perf = { sum: 0, n: 0, last: 0, hold: 2 };
+function trackPerf(active) {
+  const now = performance.now(), d = now - perf.last; perf.last = now;
+  if (!active || document.hidden || d > 250) { perf.sum = perf.n = 0; return; }
+  if (perf.hold > 0) { perf.hold -= d / 1000; return; }
+  perf.sum += d; perf.n++;
+  if (perf.sum < 2500) return;
+  const avg = perf.sum / perf.n; perf.sum = perf.n = 0;
+  if (avg > 21 && qLv < QUAL.length - 1) { qLv++; applyQual(); perf.hold = 1.5; try { localStorage.setItem('tb-q', qLv); } catch (e) {} }
+}
 const MOTES = 90;
 const motes = (() => {
   const g = new T.BufferGeometry(), a = new Float32Array(MOTES * 3);
@@ -1067,6 +1090,7 @@ function updateParts(dt) {
 const floats = [];
 const tmpV = new T.Vector3();
 function pop(pos, text, cls = '') {
+  if (floats.length > 22) { floats[0].el.remove(); floats.shift(); }
   const el = document.createElement('div'); el.className = 'pop ' + cls; el.textContent = text;
   $('fx').appendChild(el);
   floats.push({ el, pos: pos.clone().setY(pos.y + 1.7), t: 0, dx: (Math.random() - .5) * .4 });
@@ -4162,30 +4186,33 @@ document.querySelectorAll('.cls').forEach(b => b.addEventListener('click', () =>
 $('startBtn').textContent = `Start as ${CLASSES[heroCls].name}`;
 
 /* ---------- HUD ---------- */
+const hudC = {};
+function setT(id, v) { if (hudC[id] !== v) { hudC[id] = v; $(id).textContent = v; } }
+function setW(id, v) { v = (Math.round(parseFloat(v) * 2) / 2) + '%'; if (hudC['w' + id] !== v) { hudC['w' + id] = v; $(id).style.width = v; } }
 function updateHUD() {
-  $('hpF').style.width = (P.hp / P.max * 100) + '%';
-  $('hpT').textContent = `${Math.ceil(P.hp)} / ${P.max}${P.shield > 0 ? ` +${Math.ceil(P.shield)}` : ''}${P.defy ? ` · ${P.defy} defy` : ''}`;
+  setW('hpF', (P.hp / P.max * 100) + '%');
+  setT('hpT', `${Math.ceil(P.hp)} / ${P.max}${P.shield > 0 ? ` +${Math.ceil(P.shield)}` : ''}${P.defy ? ` · ${P.defy} defy` : ''}`);
   const eq = P.equip ? EQUIP[P.equip] : null, eb = $('bEquip');
   eb.hidden = !eq;
   if (eq) { const lb = P.eqCd > 0 ? String(Math.ceil(P.eqCd)) : eq.n; if (eb.textContent !== lb) eb.textContent = lb; eb.classList.toggle('cool', P.eqCd > 0); }
   const et = eq ? `${isTouch ? '' : 'Q: '}${eq.n}${P.eqCd > 0 ? ` ${Math.ceil(P.eqCd)}s` : ', ready'}` : '';
-  if ($('eqT').textContent !== et) $('eqT').textContent = et;
-  $('lvT').textContent = `Lv ${P.lv}`;
-  $('xpF').style.width = Math.min(100, P.xp / xpNeed(P.lv) * 100) + '%';
+  if ($('eqT').textContent !== et) setT('eqT', et);
+  setT('lvT', `Lv ${P.lv}`);
+  setW('xpF', Math.min(100, P.xp / xpNeed(P.lv) * 100) + '%');
   $('lvl').classList.toggle('up', P.pendingLv > 0);
-  $('stF').style.width = (P.st / P.stMax * 100) + '%';
-  $('waveT').textContent = `Floor ${floor}`;
+  setW('stF', (P.st / P.stMax * 100) + '%');
+  setT('waveT', `Floor ${floor}`);
   const mt = [stageName(), floorMod ? MODS[floorMod].name : '', P.curse ? `${curseNames()} (${P.curse.left})` : '', P.burnT > 0 ? 'Burning' : '', P.chillT > 0 ? 'Chilled' : '', P.weakT > 0 ? 'Weakened' : ''].filter(Boolean).join(', ');
-  if ($('modT').textContent !== mt) $('modT').textContent = mt;
+  if ($('modT').textContent !== mt) setT('modT', mt);
   const boss = enemies.find(e => (e.def.boss || e.def.bar) && !e.dead);
   const trv = !boss && cur && cur.trove && roomLocked;
   $('bossBar').classList.toggle('on', !!boss || !!trv);
-  if (trv) { const tn = `Trove, ${Math.ceil(troveT)}s`; if ($('bossN').textContent !== tn) $('bossN').textContent = tn; $('bossF').style.width = (troveT / TROVE_T * 100) + '%'; }
+  if (trv) { const tn = `Trove, ${Math.ceil(troveT)}s`; if ($('bossN').textContent !== tn) $('bossN').textContent = tn; setW('bossF', (troveT / TROVE_T * 100) + '%'); }
   if (boss) { const bn = `${boss.def.title || bossName(boss.type === 'guardian' ? 'guardian' : 'boss')}, Lv ${floor}`; if ($('bossN').textContent !== bn) $('bossN').textContent = bn; }
-  if (boss) $('bossF').style.width = (Math.max(0, boss.hp) / boss.max * 100) + '%';
-  $('killT').textContent = `${kills} ${kills === 1 ? 'kill' : 'kills'}`;
-  $('goldT').textContent = `${P.gold} gold`;
-  $('oilF').style.width = P.oil + '%';
+  if (boss) setW('bossF', (Math.max(0, boss.hp) / boss.max * 100) + '%');
+  setT('killT', `${kills} ${kills === 1 ? 'kill' : 'kills'}`);
+  setT('goldT', `${P.gold} gold`);
+  setW('oilF', P.oil + '%');
   $('oilBar').classList.toggle('low', P.oil < 25);
   const C = CLASSES[P.cls], sb = $('bBlock');
   const label = C.skillCd && P.skillCd > 0 ? String(Math.ceil(P.skillCd)) : C.btn[2];
@@ -4256,6 +4283,7 @@ function loop() {
   if (bannerTimer > 0) { bannerTimer -= real; if (bannerTimer <= 0) $('banner').classList.remove('on'); }
   updateHUD();
   renderer.render(scene, cam);
+  trackPerf(playing && !paused && !choosing && !winOpen && !trans);
 }
 P.pos.set(0, 0, 0);
 genFloor(1); enterRoom(rk(0, 0), null);

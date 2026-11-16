@@ -423,7 +423,7 @@ function inkWash(mat) {
         vec3 flatC = diffuseColor.rgb * band * 0.62 + totalEmissiveRadiance;
         c = mix(c, flatC, 0.5);
         c *= mix(0.86, 1.12, wash); float g = dot(c, vec3(0.2126, 0.7152, 0.0722)); c = mix(vec3(g), c, 1.2);
-        c = mix(c, hInk, k * 0.7);
+        c = mix(c, min(hInk, c * 0.4), k * 0.7);
         gl_FragColor.rgb = c; }
       #include <tonemapping_fragment>`);
   };
@@ -1246,17 +1246,105 @@ function eyes(b, color, x, y, z, r = .018) {
   [-1, 1].forEach(s => blob(b, mat, [r, r * .8, r * .6], [s * x, y, z], b.head));
 }
 
-/* ---------- hero models, rebuilt from the key art ---------- */
-// open cloth tube hanging from its top edge, with soft folds that deepen toward the hem
+/* ---------- sculpting kit shared by the whole roster ---------- */
+const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+// a head shaped through forehead, cheeks, jaw and chin; y runs -1 (chin) to 1 (crown), +z is the face
+const headCache = {};
+function headGeo(o = {}) {
+  const P = Object.assign({ crown: 1, cheek: .9, jaw: .74, chin: .38, brow: .1, jawFwd: .05, back: 1, len: 1.1, flat: .9, nose: .06 }, o);
+  const key = JSON.stringify(P); if (headCache[key]) return headCache[key];
+  const g = new T.SphereGeometry(1, 30, 24), p = g.attributes.position;
+  const K = [[-1, P.chin], [-.6, P.jaw], [-.12, P.cheek], [.35, P.crown], [1, P.crown]];
+  const W = t => { for (let i = 1; i < K.length; i++) if (t <= K[i][0]) { const u = sstep(K[i - 1][0], K[i][0], t); return K[i - 1][1] + (K[i][1] - K[i - 1][1]) * u; } return P.crown; };
+  for (let i = 0; i < p.count; i++) {
+    let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const w = W(y); x *= w * P.flat;
+    if (z > 0) {
+      const fr = z; z *= w;
+      z += P.brow * Math.exp(-((y - .3) ** 2) / .015) * fr * (1 - Math.abs(x) * .6);
+      z += P.jawFwd * sstep(-.1, -.85, y) * fr;
+      z += P.nose * Math.exp(-((y + .02) ** 2) / .03) * Math.exp(-(x * x) / .012) * fr;
+    } else z *= P.back * Math.max(w, .82);
+    p.setXYZ(i, x, y * P.len, z);
+  }
+  g.computeVertexNormals();
+  return (headCache[key] = g);
+}
+// torso from a side profile: radius at pelvis, waist, ribs, chest and shoulders, then squashed front to back
+function torsoProfile(b, mat, parent, o) {
+  const pts = [[.0001, -o.bh - .01], [o.waist * .9, -o.bh], [o.waist, -o.bh * .4], [o.rib * .95, o.ch * .25], [o.rib, o.ch * .6], [o.chest, o.ch * .95], [o.shoulder, o.ch * 1.15], [o.shoulder * .75, o.ch * 1.32], [o.shoulder * .3, o.ch * 1.43], [.0001, o.ch * 1.45]];
+  const g = new T.LatheGeometry(pts.map(q => new T.Vector2(q[0], q[1])), 24);
+  const pa = g.attributes.position;
+  for (let i = 0; i < pa.count; i++) { const z = pa.getZ(i); pa.setZ(i, z * (z > 0 ? o.front : o.backD)); }
+  g.computeVertexNormals();
+  const me = new T.Mesh(g, mat); me.castShadow = true; parent.add(me); return me;
+}
+// a closed hand wrapped around a vertical grip (weapons run along the hand's y axis)
+function fist(b, mat, s, parent) {
+  const g = new T.Group(); g.position.y = -s * .85; parent.add(g);
+  blob(b, mat, [s * .95, s * 1.15, s * .9], [0, 0, -s * .05], g);
+  for (let i = 0; i < 4; i++) blob(b, mat, [s * .38, s * .3, s * .38], [s * .42, s * (.5 - i * .33), s * .55], g);
+  const th = blob(b, mat, [s * .3, s * .55, s * .3], [-s * .5, s * .35, s * .55], g); th.rotation.z = .45;
+  return g;
+}
+// footwear with a flat sole resting on the floor; ankle height comes from the rig
+function shoe(b, mat, L, ankle, o = {}) {
+  const h = L.foot[1] * 1.4, len = L.foot[2] * 2.3 * (o.len || 1), w = L.foot[0] * 2 * (o.w || 1);
+  blob(b, mat, [w * .5, h * .7, len * .46], [0, -h * .42, len * .24], ankle);
+  b.add(new T.BoxGeometry(w * .95, .02, len * .96), o.sole || mat, 0, -h + .01, len * .24, ankle);
+  if (o.toeUp) { const t = blob(b, mat, [w * .38, h * .3, len * .22], [0, -h * .6 + o.toeUp, len * .66], ankle); t.rotation.x = -.6; }
+  if (o.cuff) b.add(new T.CylinderGeometry(o.cuff, o.cuff * 1.05, .06, 14), mat, 0, .02, 0, ankle);
+}
+// strip the default hand and foot blobs so a builder can fit its own
+function clearHands(b, which) { (which || b.arms).forEach(a => a.hand.children.slice().forEach(c => { if (c.isMesh) a.hand.remove(c); })); }
+function clearFeet(b) { b.legsJ.forEach(l => l.ankle.children.slice().forEach(c => { if (c.isMesh) l.ankle.remove(c); })); }
+function swapHead(b, geo, s, mat) {
+  b.head.children.slice().forEach(c => { if (c.isMesh && c.geometry === SPH) b.head.remove(c); });
+  const L = b.L, me = new T.Mesh(geo, mat || b.mt.skin);
+  me.scale.set(L.head * s[0], L.head * s[1], L.head * s[2]); me.position.set(0, L.head * .95, .01); me.castShadow = true; b.head.add(me); return me;
+}
+function swapTorso(b, o, mat) {
+  b.chest.children.slice().forEach(c => { if (c.isMesh && c.geometry.type === 'LatheGeometry') b.chest.remove(c); });
+  return torsoProfile(b, mat || b.mt.top, b.chest, o);
+}
+// segment between two points, used for bow limbs, bones and struts
+function strut(b, mat, a, c, r0, r1, parent, seg = 8) {
+  const d = new T.Vector3().subVectors(c, a), len = d.length();
+  const me = new T.Mesh(new T.CylinderGeometry(r1, r0, len, seg), mat);
+  me.position.copy(a).addScaledVector(d, .5); me.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), d.normalize()); me.castShadow = true; parent.add(me); return me;
+}
+const V = (x, y, z) => new T.Vector3(x, y, z);
+// longbow: thick grip, limbs that thin toward the tips, string clear of the wood
+function makeBow(b, parent, size, wood, strColor) {
+  const g = joint(parent, 0, -.03, .02);
+  const inner = new T.Group(); inner.rotation.y = Math.PI / 2; g.add(inner);
+  const al = .5, R = size / Math.sin(al), sag = R * (1 - Math.cos(al)), wm = b.m(wood), n = 7;
+  [-1, 1].forEach(s => {
+    let prev = V(0, 0, 0);
+    for (let i = 1; i <= n; i++) {
+      const th = -Math.PI / 2 + s * al * i / n, p = V(R * Math.cos(th), R + R * Math.sin(th), 0);
+      strut(b, wm, prev, p, lerp(.019, .007, (i - 1) / n), lerp(.019, .007, i / n), inner, 6); prev = p;
+    }
+    blob(b, b.m(0xe6dcc4), [.012, .012, .012], [s * size, sag, 0], inner);
+  });
+  b.add(new T.CylinderGeometry(.026, .026, .13, 10), b.m(0x4a2a16), 0, 0, 0, inner).rotation.z = Math.PI / 2;
+  const str = new T.Mesh(new T.CylinderGeometry(.0035, .0035, size * 2, 4), basic(strColor)); str.rotation.z = Math.PI / 2; str.position.y = sag + .004; inner.add(str);
+  return g;
+}
+// cloth tube hanging from its top edge; two fold frequencies give folds of different depth
 function drape(rTop, rBot, h, o = {}) {
-  const seg = o.seg || 30, hs = o.hs || 8, th0 = o.th0 ?? 0, thL = o.thL ?? Math.PI * 2;
+  const seg = o.seg || 36, hs = o.hs || 9, th0 = o.th0 ?? 0, thL = o.thL ?? Math.PI * 2;
   const g = new T.CylinderGeometry(rTop, rBot, h, seg, hs, true, th0, thL);
   const p = g.attributes.position, folds = o.folds ?? 8, amp = o.amp ?? .018, t0 = o.t0 ?? 0, t1 = o.t1 ?? 1;
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
     const t = t0 + (t1 - t0) * (h / 2 - y) / h, a = Math.atan2(x, z), r = Math.hypot(x, z) || 1e-3;
-    const k = 1 + Math.sin(a * folds + (o.phase || 0)) * amp * (.25 + t) / r;
-    p.setXYZ(i, x * k, y + (o.hemWave ? Math.sin(a * folds * .5 + 1) * o.hemWave * t * t : 0), z * k * (o.flatZ || 1));
+    const f = Math.sin(a * folds + (o.phase || 0)) * amp + (o.amp2 ? Math.sin(a * (o.folds2 || folds * 2.3) + 1.7) * o.amp2 : 0);
+    const k = 1 + f * (.25 + t) / r;
+    let yy = y + (o.hemWave ? Math.sin(a * folds * .5 + 1) * o.hemWave * t * t : 0);
+    if (o.tatter) yy -= Math.max(0, Math.sin(a * o.tatter)) ** 3 * o.tatterLen * t * t;
+    if (o.skew) yy -= o.skew * t * Math.max(0, x / r);
+    p.setXYZ(i, x * k, yy, z * k * (o.flatZ || 1));
   }
   g.translate(0, -h / 2, 0); g.computeVertexNormals();
   return g;
@@ -1264,79 +1352,96 @@ function drape(rTop, rBot, h, o = {}) {
 function cloth(b, mat, geo, parent, x = 0, y = 0, z = 0) {
   const me = new T.Mesh(geo, mat); me.position.set(x, y, z); me.castShadow = true; parent.add(me); return me;
 }
-// partial sphere shell (helmets, hoods, pauldrons, hair caps); front of the body is phi = PI/2
-const shellGeo = (r, phi0, phiL, th0, thL, seg = 20) => new T.SphereGeometry(r, seg, Math.max(6, Math.round(seg * .6)), phi0, phiL, th0, thL);
-function heroEyes(b, y = .12, x = .045, z = .118) {
+const shellGeo = (r, phi0, phiL, th0, thL, seg = 22) => new T.SphereGeometry(r, seg, Math.max(6, Math.round(seg * .6)), phi0, phiL, th0, thL);
+function heroEyes(b, y, x, z, s = 1) {
   const iris = basic(0x2a1d18), shine = basic(0xfff6e6);
-  [-1, 1].forEach(s => {
-    blob(b, iris, [.014, .02, .007], [s * x, y, z], b.head);
-    blob(b, shine, [.005, .006, .004], [s * x + .005, y + .008, z + .006], b.head);
+  [-1, 1].forEach(sd => {
+    blob(b, iris, [.013 * s, .019 * s, .006], [sd * x, y, z], b.head);
+    blob(b, shine, [.004 * s, .005 * s, .003], [sd * x + .004, y + .007, z + .004], b.head);
+    const br = blob(b, b.m(0x5a3020), [.02 * s, .0035, .004], [sd * x, y + .03 * s, z - .002], b.head); br.rotation.z = -sd * .12;
   });
-  blob(b, b.m(0x6a3a2a), [.022, .004, .004], [-x, y + .034, z - .004], b.head).rotation.z = .15;
-  blob(b, b.m(0x6a3a2a), [.022, .004, .004], [x, y + .034, z - .004], b.head).rotation.z = -.15;
 }
-function trimMat(b) { return b.m(0xc08a32, { metalness: .55, roughness: .4 }); }
+function trimMat(b) { return b.m(0xc08a32, { metalness: .5, roughness: .42 }); }
+// plate with a visible thickness: a shell plus a rolled rim along its lower edge
+function plate(b, mat, rimMat, r, thL, parent, x, y, z, sx = 1, sy = .62, sz = 1.1) {
+  const g = new T.Group(); g.position.set(x, y, z); g.scale.set(sx, sy, sz); parent.add(g);
+  const sh = new T.Mesh(shellGeo(r, 0, Math.PI * 2, 0, thL), mat); sh.castShadow = true; g.add(sh);
+  const rr = r * Math.sin(thL), ry = r * Math.cos(thL);
+  const rim = new T.Mesh(new T.TorusGeometry(rr, .009 / sy, 5, 28), rimMat); rim.rotation.x = Math.PI / 2; rim.position.y = ry; g.add(rim);
+  return g;
+}
 
+/* ---------- heroes ---------- */
 function buildHero() {
   const b = rigBase(0);
   const steel = b.m(0xc4beb4, { metalness: .55, roughness: .34 }), steelD = b.m(0x8e8a84, { metalness: .55, roughness: .4 });
-  const red = b.m(0x8e2219, { side: T.DoubleSide, roughness: .9 });
-  const gold = trimMat(b), skin = b.m(0xc8946c, { roughness: .9 }), hair = b.m(0xd8a830, { roughness: .7 });
-  humanoid(b, { skin, top: steel, legs: steelD, boots: steel, arm: steel, fore_c: steel, hand_c: steelD,
-    thigh: [.36, .072, .056], shin: [.35, .06, .046], chest: [.235, .21, .16], belly: [.17, .14, .13], shW: .25, head: .122, headS: [1, 1.08, 1.02] });
-  // gorget and breastplate with the gold fleur
-  cloth(b, steel, drape(.07, .12, .07, { folds: 0, seg: 20 }), b.neck, 0, .05, 0);
-  blob(b, steel, [.215, .185, .135], [0, .17, .05], b.chest);
-  const fl = new T.Group(); fl.position.set(0, .2, .183); b.chest.add(fl);
-  b.add(new T.ConeGeometry(.018, .09, 8), gold, 0, .01, 0, fl);
-  [-1, 1].forEach(s => { const p = b.add(new T.ConeGeometry(.012, .06, 6), gold, s * .025, -.005, 0, fl); p.rotation.z = s * .9; });
-  b.add(new T.BoxGeometry(.07, .012, .01), gold, 0, -.035, 0, fl);
-  // three stacked, flaring plates on each shoulder
+  const red = b.m(0x8e2219, { side: T.DoubleSide, roughness: .9 }), gold = trimMat(b), skin = b.m(0xc08a64, { roughness: .9 });
+  const hair = b.m(0xd8a830, { roughness: .7, side: T.DoubleSide }), under = b.m(0x3e3842);
+  humanoid(b, { skin, top: steel, legs: under, boots: steel, arm: steelD, fore_c: steel, hand_c: steelD,
+    thigh: [.37, .068, .054], shin: [.36, .056, .045], upper: [.26, .055, .045], fore: [.24, .05, .042], chest: [.24, .21, .16], belly: [.15, .13, .12], shW: .26, head: .118 });
+  swapHead(b, headGeo({ cheek: .9, jaw: .72, chin: .36, brow: .06, jawFwd: .03 }), [1, 1.06, 1.02]);
+  swapTorso(b, { bh: b.L.belly[1] + .06, ch: .21, waist: .15, rib: .2, chest: .245, shoulder: .25, front: .74, backD: .6 }, steel);
+  // breastplate: a gentle centre keel, the gold fleur, a plackart narrowing into the belt
+  const keel = b.add(new T.BoxGeometry(.034, .24, .034), steel, 0, .2, .168, b.chest); keel.rotation.y = Math.PI / 4; keel.scale.x = .5;
+  const fl = new T.Group(); fl.position.set(0, .22, .188); b.chest.add(fl);
+  b.add(new T.ConeGeometry(.016, .085, 6), gold, 0, .01, 0, fl);
+  [-1, 1].forEach(s => { b.add(new T.ConeGeometry(.011, .055, 5), gold, s * .022, -.006, 0, fl).rotation.z = s * .95; });
+  b.add(new T.BoxGeometry(.065, .011, .01), gold, 0, -.032, 0, fl);
+  blob(b, steelD, [.17, .09, .12], [0, -.02, .02], b.chest);
+  cloth(b, steel, drape(.08, .12, .08, { folds: 0, seg: 20 }), b.neck, 0, .06, 0);
+  // pauldrons: three rimmed lames wrapping the shoulder front to back
   b.arms.forEach(a => {
-    for (let i = 0; i < 3; i++) {
-      const pl = new T.Mesh(shellGeo(.13 + i * .012, 0, Math.PI * 2, 0, 1.05 - i * .06), i % 2 ? steelD : steel);
-      pl.material.side = T.DoubleSide; pl.scale.set(1.05, .62, 1.12); pl.position.set(a.sd * .025, .055 - i * .052, 0);
-      pl.rotation.z = a.sd * -.32; pl.castShadow = true; a.sh.add(pl);
-    }
-    blob(b, steel, [.062, .055, .062], [0, 0, 0], a.el);
-    blob(b, steelD, [.058, .066, .06], [0, -.03, .005], a.hand);
+    [[.12, 1.35, .06], [.126, 1.28, .02], [.132, 1.2, -.02]].forEach(([r, th, y], i) => {
+      const p = plate(b, i === 1 ? steelD : steel, steelD, r, th, a.sh, a.sd * .015, y, 0, .95, .72, 1.12); p.rotation.z = a.sd * -.18;
+    });
+    const cop = plate(b, steel, steelD, .06, 1.2, a.el, 0, .01, .01, 1, .9, 1); cop.rotation.x = Math.PI / 2;
+    cloth(b, steel, drape(.05, .068, .06, { folds: 0, seg: 16 }), a.el, 0, -.18, 0);
   });
-  // belt, faulds and the long red tabard with a gold hem
-  blob(b, b.m(0x5b3a22), [.2, .04, .145], [0, .03, 0], b.spine);
-  blob(b, gold, [.035, .03, .02], [0, .03, .145], b.spine);
-  cloth(b, steel, drape(.19, .22, .1, { folds: 6, amp: .004 }), b.hips, 0, .06, 0);
-  const tab = drape(.2, .31, .5, { folds: 9, amp: .022 });
-  cloth(b, red, tab, b.hips, 0, -.03, 0);
-  cloth(b, gold, drape(.302, .316, .035, { folds: 9, amp: .022, t0: .93, t1: 1 }), b.hips, 0, -.5, 0);
-  // knee cops and sabatons
-  b.legsJ.forEach(l => { blob(b, steel, [.07, .065, .07], [0, 0, .02], l.knee); blob(b, steelD, [.06, .045, .12], [0, -.03, .05], l.ankle); });
-  // open-faced helm with a brow band and crest, blond hair spiking out of the top
-  const helm = new T.Mesh(shellGeo(.138, 0, Math.PI * 2, 0, .92), steel); helm.material.side = T.DoubleSide; helm.position.set(0, .135, -.005); helm.castShadow = true; b.head.add(helm);
-  const guard = new T.Mesh(shellGeo(.14, Math.PI / 2 + 1.2, Math.PI * 2 - 2.4, .9, 1.05), steel); guard.position.set(0, .13, -.005); guard.castShadow = true; b.head.add(guard);
-  b.add(new T.CylinderGeometry(.142, .142, .032, 28, 1, true, -1.95, 3.9), gold, 0, .16, -.005, b.head).material.side = T.DoubleSide;
-  b.add(new T.ConeGeometry(.02, .07, 6), gold, 0, .21, .128, b.head).rotation.x = .25;
-  for (let i = 0; i < 9; i++) {
-    const a = i / 9 * Math.PI * 2, sp = b.add(new T.ConeGeometry(.032, .12, 5), hair, Math.sin(a) * .06, .265, Math.cos(a) * .05 - .01, b.head);
-    sp.rotation.set(Math.cos(a) * .7 + .2, 0, -Math.sin(a) * .8);
+  clearHands(b); b.arms.forEach(a => fist(b, steelD, .046, a.hand));
+  // belt, faulds, knee-length tabard with gold hem
+  blob(b, b.m(0x4a2c18), [.18, .038, .13], [0, .03, 0], b.spine);
+  b.add(new T.BoxGeometry(.05, .04, .02), gold, 0, .03, .135, b.spine);
+  cloth(b, steel, drape(.17, .2, .09, { folds: 6, amp: .004 }), b.hips, 0, .055, 0);
+  cloth(b, red, drape(.19, .29, .46, { folds: 9, amp: .018, amp2: .006 }), b.hips, 0, -.03, 0);
+  cloth(b, gold, drape(.283, .296, .03, { folds: 9, amp: .018, amp2: .006, t0: .94, t1: 1 }), b.hips, 0, -.48, 0);
+  // greaves, rimmed knee cops, segmented sabatons
+  b.legsJ.forEach(l => {
+    cloth(b, steel, drape(.06, .05, .3, { folds: 0, seg: 16 }), l.knee, 0, -.04, 0);
+    const kc = plate(b, steel, steelD, .065, 1.15, l.knee, 0, 0, .025, 1, .85, .9); kc.rotation.x = Math.PI / 2 - .2;
+  });
+  clearFeet(b); b.legsJ.forEach(l => shoe(b, steel, b.L, l.ankle, { sole: steelD, len: 1.05 }));
+  // open helm: brow plate dipping to the centre, sweeping to the temples into cheek guards; crown and fringe stay visible
+  const hc = b.L.head * .95;
+  b.add(new T.CylinderGeometry(.125, .127, .042, 30, 1, true, -1.9, 3.8), steel, 0, hc + .045, 0, b.head).material.side = T.DoubleSide;
+  const drop = b.add(new T.ConeGeometry(.026, .06, 3), steel, 0, hc + .02, .122, b.head); drop.rotation.x = Math.PI; drop.scale.z = .35;
+  b.add(new T.ConeGeometry(.012, .045, 6), gold, 0, hc + .05, .13, b.head);
+  [[Math.PI / 2 + .55, 1.0], [Math.PI / 2 - 1.55, 1.0]].forEach(([p0, pl]) => {
+    const cg = new T.Mesh(shellGeo(.13, p0, pl, .95, 1.0), steel); cg.material.side = T.DoubleSide; cg.position.y = hc; cg.castShadow = true; b.head.add(cg);
+  });
+  const nape = new T.Mesh(shellGeo(.132, Math.PI / 2 + 1.55, Math.PI * 2 - 3.1, .9, 1.05), steel); nape.position.y = hc; b.head.add(nape);
+  // hair: flat clumps that grow from the crown and sweep toward one side
+  blob(b, hair, [.112, .09, .118], [0, hc + .045, -.004], b.head);
+  for (let i = 0; i < 13; i++) {
+    const a = i / 13 * Math.PI * 2, rr = .07 + (i % 3) * .015;
+    const c = b.add(new T.ConeGeometry(.032, .13, 4), hair, Math.sin(a) * rr * .6, hc + .1, Math.cos(a) * rr * .6 - .01, b.head);
+    c.scale.z = .32; c.rotation.set(Math.cos(a) * .9 + .25, a, -.9 - Math.sin(a) * .3);
   }
-  [-1, 1].forEach(s => b.add(new T.ConeGeometry(.022, .09, 5), hair, s * .07, .16, .1, b.head).rotation.set(2.6, 0, s * -.4));
-  blob(b, skin, [.108, .112, .08], [0, .1, .058], b.head);
-  heroEyes(b, .12, .042, .128);
-  // full-length crimson cape that wraps around the sides
+  [-.05, -.015, .02, .055].forEach((x, i) => { const c = b.add(new T.ConeGeometry(.025, .1, 4), hair, x, hc + .07, .095, b.head); c.scale.z = .3; c.rotation.set(2.35, 0, -.75 - i * .08); });
+  heroEyes(b, hc - .005, .038, .123);
+  // ankle-long cape behind, legs left clear in front
   const cj = joint(b.chest, 0, b.L.chest[1] * 1.22, -.02);
-  const cp = cloth(b, red, drape(.24, .46, 1.12, { th0: Math.PI / 2 + .35, thL: Math.PI - .7 + Math.PI * .1, folds: 10, amp: .028, hemWave: .03 }), cj);
-  cp.scale.z = .8; cp.rotation.y = -Math.PI * .05;
+  const cp = cloth(b, red, drape(.24, .46, 1.12, { th0: Math.PI / 2 + .35, thL: Math.PI - .4, folds: 10, amp: .026, amp2: .01, hemWave: .03 }), cj);
+  cp.scale.z = .8;
   b.cape = cj;
-  // longsword: gold pommel, long quillons, broad blade
+  // straight longsword, gold quillons and pommel, gripped in the fist
   const sw = joint(b.main.hand, 0, -.04, .01);
   const metal = b.m(0xe4e6e8, { metalness: .85, roughness: .2 });
-  b.add(new T.CylinderGeometry(.02, .022, .17, 10), b.m(0x4a2c18), 0, .03, 0, sw);
-  b.add(new T.SphereGeometry(.036, 14, 12), gold, 0, .125, 0, sw);
-  b.add(new T.BoxGeometry(.3, .03, .04), gold, 0, -.065, 0, sw);
-  [-1, 1].forEach(s => b.add(new T.SphereGeometry(.024, 10, 8), gold, s * .155, -.06, 0, sw));
-  b.add(new T.SphereGeometry(.03, 10, 8), gold, 0, -.065, .01, sw);
-  const blade = b.add(new T.CylinderGeometry(.034, .05, .95, 4), metal, 0, -.55, 0, sw); blade.scale.z = .3;
-  b.add(new T.ConeGeometry(.034, .12, 4), metal, 0, -1.08, 0, sw).rotation.x = Math.PI;
+  b.add(new T.CylinderGeometry(.018, .02, .17, 10), b.m(0x4a2c18), 0, .03, 0, sw);
+  b.add(new T.SphereGeometry(.034, 14, 12), gold, 0, .125, 0, sw);
+  b.add(new T.BoxGeometry(.3, .028, .036), gold, 0, -.065, 0, sw);
+  [-1, 1].forEach(s => b.add(new T.SphereGeometry(.022, 10, 8), gold, s * .155, -.06, 0, sw));
+  const blade = b.add(new T.CylinderGeometry(.032, .048, .95, 4), metal, 0, -.55, 0, sw); blade.scale.z = .28;
+  b.add(new T.ConeGeometry(.032, .12, 4), metal, 0, -1.08, 0, sw).rotation.x = Math.PI;
   b.sword = sw;
   const trailMat = basic(0xffe0a0, { transparent: true, opacity: 0, side: T.DoubleSide, blending: T.AdditiveBlending, depthWrite: false, fog: false });
   b.trail = flat(new T.RingGeometry(.7, 2.0, 24, -Math.PI / 2 - 1.15, 2.3), trailMat); b.trail.position.y = .85;
@@ -1347,57 +1452,53 @@ function buildHero() {
   return b;
 }
 
-function makeBow(b, parent, size, wood, strColor) {
-  // a shallow longbow arc: grip at the hand, tips curving back toward the archer, string between the tips
-  const g = joint(parent, 0, -.03, .02);
-  const inner = new T.Group(); inner.rotation.y = Math.PI / 2; g.add(inner);
-  const al = .45, R = size / Math.sin(al), sag = R * (1 - Math.cos(al));
-  const piv = new T.Group(); piv.position.y = R; inner.add(piv);
-  const arc = new T.Mesh(new T.TorusGeometry(R, .016, 6, 32, al * 2), b.m(wood)); arc.rotation.z = -Math.PI / 2 - al; arc.castShadow = true; piv.add(arc);
-  b.add(new T.CylinderGeometry(.022, .022, .12, 8), b.m(0x5a3420), 0, 0, 0, inner).rotation.z = Math.PI / 2;
-  const str = new T.Mesh(new T.CylinderGeometry(.0035, .0035, size * 2, 4), basic(strColor)); str.rotation.z = Math.PI / 2; str.position.y = sag; inner.add(str);
-  return g;
-}
-
 function buildHunter() {
   const b = rigBase(0);
-  const olive = b.m(0x36360e, { side: T.DoubleSide, roughness: .95 });
+  const olive = b.m(0x3e3c12, { side: T.DoubleSide, roughness: .95 }), cavity = basic(0x120d0a, { side: T.DoubleSide });
   const leather = b.m(0x5e2e14, { roughness: .85 }), leatherD = b.m(0x3a1e0e, { roughness: .9 }), gold = trimMat(b);
-  const skin = b.m(0xc8946c, { roughness: .9 }), hair = b.m(0x5a2c16, { roughness: .8 });
-  humanoid(b, { skin, top: leather, legs: b.m(0x4e3018), boots: leatherD, arm: leather, hand_c: b.m(0x6a4024),
-    thigh: [.36, .07, .055], shin: [.35, .056, .044], chest: [.21, .2, .145], shW: .23, head: .12 });
-  // jerkin details: belt with a square gold buckle, buckled straps, short tunic skirt
-  blob(b, leatherD, [.19, .04, .14], [0, .035, 0], b.spine);
-  b.add(new T.BoxGeometry(.05, .045, .02), gold, 0, .035, .14, b.spine);
-  for (let i = 0; i < 3; i++) b.add(new T.BoxGeometry(.04, .012, .01), gold, .04, .1 + i * .07, .15, b.chest);
-  cloth(b, b.m(0x70401e, { side: T.DoubleSide }), drape(.18, .23, .26, { folds: 6, amp: .01 }), b.hips, 0, .02, 0);
-  // tall boots with folded cuffs and gloves
-  b.legsJ.forEach(l => cloth(b, leatherD, drape(.062, .066, .07, { folds: 5, amp: .004 }), l.knee, 0, -.04, 0));
-  b.arms.forEach(a => cloth(b, leatherD, drape(.05, .056, .07, { folds: 4, amp: .003 }), a.el, 0, -.15, 0));
-  // brown hair, then a deep olive hood with a soft point at the back
-  blob(b, hair, [.128, .12, .13], [0, .14, -.008], b.head);
-  [-1, 0, 1].forEach(s => b.add(new T.ConeGeometry(.03, .1, 5), hair, s * .045, .17, .1, b.head).rotation.set(2.75, 0, s * .3));
-  blob(b, skin, [.1, .1, .07], [0, .1, .058], b.head);
-  heroEyes(b, .115, .042, .118);
-  const hood = new T.Mesh(shellGeo(.17, Math.PI / 2 + .62, Math.PI * 2 - 1.24, 0, 2.15), olive); hood.position.set(0, .13, -.02); hood.scale.set(1, 1.08, 1.05); hood.castShadow = true; b.head.add(hood);
-  b.add(new T.ConeGeometry(.08, .2, 10), olive, 0, .14, -.19, b.head).rotation.x = -2.2;
-  // shoulder mantle with a gold clasp, and a long cloak that covers back and sides
-  cloth(b, olive, drape(.13, .31, .27, { folds: 9, amp: .02 }), b.chest, 0, b.L.chest[1] * 1.42, 0);
-  b.add(new T.SphereGeometry(.026, 10, 8), gold, 0, b.L.chest[1] * 1.3, .17, b.chest);
+  const skin = b.m(0xc08a64, { roughness: .9 }), hair = b.m(0x5a2c16, { roughness: .8, side: T.DoubleSide }), tob = b.m(0x6a4a26, { roughness: .9 });
+  humanoid(b, { skin, top: leather, legs: tob, boots: leatherD, arm: leather, hand_c: leatherD,
+    thigh: [.36, .066, .052], shin: [.35, .054, .043], chest: [.21, .2, .145], belly: [.15, .13, .12], shW: .23, head: .118 });
+  swapHead(b, headGeo({ cheek: .9, jaw: .72, chin: .38, brow: .05, jawFwd: .03 }), [1, 1.06, 1.02]);
+  swapTorso(b, { bh: b.L.belly[1] + .06, ch: .2, waist: .15, rib: .18, chest: .205, shoulder: .21, front: .74, backD: .64 }, leather);
+  const hc = b.L.head * .95;
+  // tunic seams, buckled belt, short skirt; trousers bunch into tall boots with raised toes
+  for (let i = 0; i < 3; i++) b.add(new T.BoxGeometry(.036, .011, .012), gold, .035, .09 + i * .065, .148, b.chest);
+  blob(b, leatherD, [.17, .036, .125], [0, .035, 0], b.spine);
+  b.add(new T.BoxGeometry(.046, .042, .02), gold, 0, .035, .13, b.spine);
+  cloth(b, b.m(0x5a2c12, { side: T.DoubleSide }), drape(.165, .215, .25, { folds: 7, amp: .01 }), b.hips, 0, .02, 0);
+  b.legsJ.forEach(l => { blob(b, tob, [.068, .06, .068], [0, .03, 0], l.knee); cloth(b, leatherD, drape(.064, .068, .07, { folds: 5, amp: .005 }), l.knee, 0, -.02, 0); });
+  clearFeet(b); b.legsJ.forEach(l => shoe(b, leatherD, b.L, l.ankle, { toeUp: .016, sole: b.m(0x24140a) }));
+  // bracer and open sleeve on the bow arm
+  cloth(b, leatherD, drape(.05, .043, .12, { folds: 0, seg: 14 }), b.off.el, 0, -.07, 0);
+  [-.09, -.14].forEach(y => b.add(new T.TorusGeometry(.049, .006, 5, 16), gold, 0, y, 0, b.off.el).rotation.x = Math.PI / 2);
+  clearHands(b); b.arms.forEach(a => fist(b, leatherD, .043, a.hand));
+  // deep hood: the opening reaches past the brow and leaves a dark hollow around the face
+  const hood = new T.Mesh(shellGeo(.165, Math.PI / 2 + .7, Math.PI * 2 - 1.4, 0, 2.2), olive); hood.position.set(0, hc + .01, .005); hood.scale.set(1, 1.1, 1.08); hood.castShadow = true; b.head.add(hood);
+  const hollow = new T.Mesh(shellGeo(.15, Math.PI / 2 + .62, Math.PI * 2 - 1.24, .1, 2.0), cavity); hollow.position.set(0, hc + .01, -.005); hollow.scale.set(1, 1.08, 1.04); b.head.add(hollow);
+  const lip = b.add(new T.TorusGeometry(.12, .014, 6, 20, Math.PI * 1.1), olive, 0, hc + .03, .1, b.head); lip.rotation.set(-.35, 0, -Math.PI * .05);
+  b.add(new T.ConeGeometry(.075, .22, 10), olive, 0, hc + .03, -.19, b.head).rotation.x = -2.25;
+  [-.045, -.012, .022, .05].forEach((x, i) => { const c = b.add(new T.ConeGeometry(.024, .09, 4), hair, x, hc + .06, .09, b.head); c.scale.z = .3; c.rotation.set(2.6, 0, .35 - i * .12); });
+  heroEyes(b, hc - .005, .038, .121);
+  // mantle pulled from a brooch at the right collarbone across the chest, hanging longer on the left
+  b.add(new T.SphereGeometry(.024, 10, 8), gold, -.09, .31, .15, b.chest);
+  const sash = b.add(new T.BoxGeometry(.1, .4, .014), olive, .04, .17, .158, b.chest); sash.rotation.z = -.62;
+  cloth(b, olive, drape(.14, .27, .22, { th0: Math.PI / 2 - .5, thL: Math.PI + .9, folds: 8, amp: .016, skew: .06 }), b.chest, 0, b.L.chest[1] * 1.42, 0);
   const cj = joint(b.chest, 0, b.L.chest[1] * 1.28, -.01);
-  const ck = cloth(b, olive, drape(.25, .5, 1.02, { th0: Math.PI / 2 + .1, thL: Math.PI - .2, folds: 11, amp: .03, hemWave: .04 }), cj); ck.scale.z = .82;
+  const ck = cloth(b, olive, drape(.24, .5, .98, { th0: Math.PI / 2 - .35, thL: Math.PI / 2 + 1.25, folds: 11, amp: .028, amp2: .012, hemWave: .035, skew: .22 }), cj); ck.scale.z = .84;
   b.cape = cj;
-  // quiver on the back, a bundle of fletched arrows over the right shoulder
-  const q = joint(b.chest, .08, .2, -.2); q.rotation.set(.12, 0, -.42);
-  b.add(new T.CylinderGeometry(.06, .052, .46, 14), leather, 0, 0, 0, q);
-  b.add(new T.TorusGeometry(.06, .009, 6, 18), gold, 0, .22, 0, q).rotation.x = Math.PI / 2;
-  const shaft = b.m(0xc8a46a), fletch = b.m(0xeee4cc, { side: T.DoubleSide });
-  for (let i = 0; i < 5; i++) {
-    const ax = Math.cos(i * 1.3) * .03, az = Math.sin(i * 1.3) * .03;
+  // quiver with a fan of fletchings over the right shoulder
+  const q = joint(b.chest, -.07, .19, -.2); q.rotation.set(.15, 0, .42);
+  b.add(new T.CylinderGeometry(.058, .05, .46, 14), leather, 0, 0, 0, q);
+  b.add(new T.TorusGeometry(.058, .009, 6, 18), gold, 0, .225, 0, q).rotation.x = Math.PI / 2;
+  b.add(new T.TorusGeometry(.053, .007, 6, 18), gold, 0, -.18, 0, q).rotation.x = Math.PI / 2;
+  const shaft = b.m(0xc8a46a), fletch = b.m(0xeee4cc, { side: T.DoubleSide }), fl2 = b.m(0x9a2c1a, { side: T.DoubleSide });
+  for (let i = 0; i < 6; i++) {
+    const ax = Math.cos(i * 1.1) * .03, az = Math.sin(i * 1.1) * .03;
     b.add(new T.CylinderGeometry(.005, .005, .2, 4), shaft, ax, .3, az, q);
-    const f = b.add(new T.ConeGeometry(.018, .07, 3), fletch, ax, .38, az, q); f.scale.z = .3;
+    const f = b.add(new T.ConeGeometry(.02, .08, 3), i % 2 ? fl2 : fletch, ax, .39, az, q); f.scale.z = .25; f.rotation.y = i;
   }
-  b.bow = makeBow(b, b.off.hand, .62, 0xb07a40, 0xe6dcc4);
+  b.bow = makeBow(b, b.off.hand, .64, 0x9a6a36, 0xe6dcc4);
   b.nock = new T.Mesh(new T.BoxGeometry(.018, .62, .018), basic(0xf3e8cc)); b.nock.visible = false; b.main.hand.add(b.nock);
   const lg = new T.PlaneGeometry(.07, 1); lg.translate(0, .5, 0);
   b.aim = new T.Mesh(lg, decalMat(0xfff2d0, .2)); b.aim.rotation.x = Math.PI / 2; b.aim.position.set(0, .06, .4);
@@ -1408,153 +1509,240 @@ function buildHunter() {
 
 function buildMage() {
   const b = rigBase(0);
-  const violet = b.m(0x382a6e, { side: T.DoubleSide, roughness: .9 }), violetD = b.m(0x271d4e, { side: T.DoubleSide, roughness: .9 });
+  const violet = b.m(0x382a6e, { side: T.DoubleSide, roughness: .9 }), violetD = b.m(0x1c1436, { side: T.DoubleSide, roughness: .95 });
   const gold = trimMat(b), red = b.m(0x7a1a0e, { side: T.DoubleSide, roughness: .9 });
-  const skin = b.m(0xc8946c, { roughness: .9 }), hair = b.m(0x8e3a16, { roughness: .75 });
-  humanoid(b, { skin, top: violet, legs: violetD, boots: b.m(0x3a2a22), arm: violet, chest: [.2, .19, .14], shW: .21, head: .12, headS: [.98, 1.08, 1] });
-  // floor-length robe with folds and a patterned gold hem
-  cloth(b, violet, drape(.2, .44, .74, { folds: 11, amp: .03, hemWave: .02 }), b.hips, 0, .06, 0);
-  cloth(b, gold, drape(.425, .445, .05, { folds: 11, amp: .03, t0: .92, t1: 1 }), b.hips, 0, -.62, 0);
-  b.add(new T.BoxGeometry(.05, .62, .012), gold, 0, -.3, .21, b.hips).rotation.x = -.26;
-  // red sash with long fringed tails
-  b.add(new T.TorusGeometry(.17, .03, 8, 24), red, 0, .02, 0, b.spine).rotation.x = Math.PI / 2;
+  const skin = b.m(0xc08a64, { roughness: .9 }), hair = b.m(0x8e3a16, { roughness: .75, side: T.DoubleSide });
+  humanoid(b, { skin, top: violet, legs: violetD, boots: b.m(0x3a2a22), arm: violet,
+    chest: [.19, .19, .14], shW: .2, head: .116, upper: [.25, .048, .04], fore: [.23, .04, .033] });
+  swapHead(b, headGeo({ cheek: .88, jaw: .7, chin: .36, brow: .04, jawFwd: .02 }), [.98, 1.06, 1]);
+  swapTorso(b, { bh: b.L.belly[1] + .06, ch: .19, waist: .14, rib: .17, chest: .19, shoulder: .195, front: .76, backD: .66 }, violet);
+  const hc = b.L.head * .95;
+  // robe follows the shoulders, ties at the waist, then flares in long folds of uneven depth
+  cloth(b, violet, drape(.19, .45, .74, { folds: 11, amp: .03, amp2: .014, hemWave: .02 }), b.hips, 0, .06, 0);
+  cloth(b, gold, drape(.437, .452, .05, { folds: 11, amp: .03, amp2: .014, t0: .93, t1: 1 }), b.hips, 0, -.62, 0);
+  b.add(new T.BoxGeometry(.05, .62, .012), gold, 0, -.3, .2, b.hips).rotation.x = -.27;
+  b.add(new T.TorusGeometry(.162, .03, 8, 24), red, 0, .02, 0, b.spine).rotation.x = Math.PI / 2;
   blob(b, red, [.05, .045, .04], [.08, .02, .14], b.spine);
   [0, 1].forEach(i => {
-    const t = b.add(new T.BoxGeometry(.06, .46, .015), red, .1 + i * .045, -.22, .16, b.spine); t.rotation.z = .05 + i * .06;
-    b.add(new T.BoxGeometry(.06, .05, .016), b.m(0x7e2014, { side: T.DoubleSide }), .1 + i * .045 + .01, -.47, .16 + .004, b.spine);
+    const t = b.add(new T.BoxGeometry(.058, .46, .015), red, .1 + i * .045, -.22, .155, b.spine); t.rotation.z = .05 + i * .06;
+    b.add(new T.BoxGeometry(.058, .05, .016), b.m(0x5e140a, { side: T.DoubleSide }), .1 + i * .045 + .01, -.47, .159, b.spine);
   });
-  // gold patterned stole over the shoulders
-  cloth(b, gold, drape(.1, .27, .15, { folds: 7, amp: .01 }), b.chest, 0, b.L.chest[1] * 1.45, 0);
-  cloth(b, b.m(0xb07c34, { side: T.DoubleSide }), drape(.268, .272, .02, { folds: 7, amp: .01, t0: .9, t1: 1 }), b.chest, 0, b.L.chest[1] * 1.45 - .15, 0);
-  // wide bell sleeves with gold cuffs
+  // standing gold collar, the largest ornament, over a gold stole
+  cloth(b, gold, drape(.1, .26, .14, { folds: 7, amp: .008 }), b.chest, 0, b.L.chest[1] * 1.45, 0);
+  cloth(b, gold, drape(.085, .1, .085, { folds: 0, seg: 24, th0: -2.4, thL: 4.8 }), b.neck, 0, .09, 0);
+  for (let i = 0; i < 10; i++) { const a = -2.2 + i / 9 * 4.4; b.add(new T.BoxGeometry(.016, .03, .006), b.m(0x8a5a1a), Math.sin(a) * .1, .05, Math.cos(a) * .1, b.neck).rotation.y = a; }
+  // bell sleeves with darker hollow cuffs; hands come out of the openings
   b.arms.forEach(a => {
-    cloth(b, violet, drape(.06, .15, .26, { folds: 6, amp: .012 }), a.el, 0, .02, 0);
+    cloth(b, violet, drape(.055, .15, .27, { folds: 6, amp: .012 }), a.el, 0, .03, 0);
+    cloth(b, violetD, drape(.05, .135, .25, { folds: 6, amp: .012 }), a.el, 0, .02, 0);
     cloth(b, gold, drape(.148, .155, .035, { folds: 6, amp: .012, t0: .9, t1: 1 }), a.el, 0, -.24, 0);
   });
-  // long auburn hair: cap, side locks and a ponytail down the back
-  blob(b, hair, [.128, .12, .128], [0, .145, -.012], b.head);
-  [-1, 1].forEach(s => { const lk = b.add(new T.CylinderGeometry(.03, .012, .3, 6), hair, s * .1, .02, .03, b.head); lk.rotation.z = s * .08; });
-  [-1, 0, 1].forEach(s => b.add(new T.ConeGeometry(.03, .09, 5), hair, s * .04, .18, .1, b.head).rotation.set(2.8, 0, s * .35));
-  const tail = joint(b.head, 0, .07, -.11); tail.rotation.x = .25;
-  const pt = b.add(new T.CylinderGeometry(.06, .025, .55, 10), hair, 0, -.28, 0, tail); pt.scale.z = .6;
-  blob(b, gold, [.03, .02, .03], [0, -.02, 0], tail);
-  blob(b, skin, [.1, .1, .07], [0, .1, .058], b.head);
-  heroEyes(b, .115, .042, .118);
-  // witch hat: drooping brim, gold patterned band, crown that curls back at the tip
+  clearHands(b, [b.main]); fist(b, skin, .04, b.main.hand);
+  // auburn hair: cap, fringe, side locks and a long ponytail
+  blob(b, hair, [.122, .11, .124], [0, hc + .035, -.012], b.head);
+  [-1, 1].forEach(s => { const lk = b.add(new T.CylinderGeometry(.028, .01, .3, 6), hair, s * .095, hc - .09, .03, b.head); lk.rotation.z = s * .08; });
+  [-.04, -.01, .02, .045].forEach((x, i) => { const c = b.add(new T.ConeGeometry(.024, .085, 4), hair, x, hc + .065, .09, b.head); c.scale.z = .3; c.rotation.set(2.65, 0, .3 - i * .12); });
+  const tail = joint(b.head, 0, hc - .04, -.105); tail.rotation.x = .25;
+  const pt = b.add(new T.CylinderGeometry(.058, .022, .55, 10), hair, 0, -.28, 0, tail); pt.scale.z = .6;
+  blob(b, gold, [.028, .02, .028], [0, -.02, 0], tail);
+  heroEyes(b, hc - .008, .037, .119);
+  // witch hat: oval brim raised over the eyes and dipping on one side, dark underside, hooked crown
   const hatM = b.m(0x2a1e58, { side: T.DoubleSide, roughness: .9 });
-  const brim = new T.LatheGeometry([[.13, .02], [.19, .012], [.26, -.01], [.3, -.04], [.305, -.046]].map(p => new T.Vector2(p[0], p[1])), 32);
-  const br = new T.Mesh(brim, hatM); br.position.set(0, .22, -.01); br.rotation.x = -.08; br.castShadow = true; b.head.add(br);
-  const hb = new T.Group(); hb.position.set(0, .23, -.015); hb.rotation.x = -.12; b.head.add(hb);
-  b.add(new T.CylinderGeometry(.145, .15, .065, 24, 1, true), gold, 0, .03, 0, hb).material.side = T.DoubleSide;
-  let seg = hb, y = .06;
-  [[.145, .1, .2, -.12], [.1, .062, .17, -.32], [.062, .03, .15, -.55], [.03, .004, .13, -.8]].forEach(([r0, r1, h, rx]) => {
-    const g = new T.Group(); g.position.y = y; g.rotation.x = rx; seg.add(g);
+  const brimG = new T.LatheGeometry([[.12, .02], [.18, .012], [.24, -.008], [.275, -.032], [.28, -.038]].map(p => new T.Vector2(p[0], p[1])), 36);
+  const bp = brimG.attributes.position;
+  for (let i = 0; i < bp.count; i++) {
+    const x = bp.getX(i), z = bp.getZ(i), r = Math.hypot(x, z), a = Math.atan2(x, z), k = sstep(.12, .28, r);
+    bp.setXYZ(i, x * 1.1, bp.getY(i) + .04 * Math.max(0, Math.cos(a)) * k - .05 * Math.max(0, Math.sin(a)) * k, z * .94);
+  }
+  brimG.computeVertexNormals();
+  const hatG = new T.Group(); hatG.position.set(0, hc + .095, -.012); hatG.rotation.x = -.06; b.head.add(hatG);
+  const br = new T.Mesh(brimG, hatM); br.castShadow = true; hatG.add(br);
+  const brU = new T.Mesh(brimG, basic(0x0e0a16, { side: T.DoubleSide })); brU.position.y = -.006; brU.scale.set(.985, 1, .985); hatG.add(brU);
+  b.add(new T.CylinderGeometry(.132, .138, .062, 24, 1, true), gold, 0, .04, 0, hatG);
+  let seg = hatG, y = .07;
+  [[.134, .1, .17, -.1, 0], [.1, .07, .14, -.28, .12], [.07, .045, .13, -.42, -.1], [.045, .025, .11, -.7, .08], [.025, .004, .1, -1.15, 0]].forEach(([r0, r1, h, rx, rz]) => {
+    const g = new T.Group(); g.position.y = y; g.rotation.set(rx, 0, rz); seg.add(g);
     b.add(new T.CylinderGeometry(r1, r0, h, 18, 1, true), hatM, 0, h / 2, 0, g);
-    seg = g; y = h * .96;
+    seg = g; y = h * .95;
   });
-  // lantern staff: brass pole, framed lantern with a warm core (b.orb) and a capped roof
-  const staff = joint(b.main.hand, 0, -.03, 0);
-  const brass = b.m(0xb8863e, { metalness: .6, roughness: .38 });
-  b.add(new T.CylinderGeometry(.02, .024, 1.62, 10), brass, 0, .22, 0, staff);
-  [-.45, .3, .9].forEach(yy => b.add(new T.TorusGeometry(.026, .008, 6, 14), gold, 0, yy, 0, staff).rotation.x = Math.PI / 2);
-  const ln = joint(staff, 0, 1.1, 0);
-  b.add(new T.CylinderGeometry(.06, .05, .025, 6), brass, 0, -.005, 0, ln);
-  for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; b.add(new T.CylinderGeometry(.006, .006, .13, 4), brass, Math.cos(a) * .055, .07, Math.sin(a) * .055, ln); }
-  b.add(new T.ConeGeometry(.085, .08, 6), brass, 0, .17, 0, ln);
-  b.add(new T.SphereGeometry(.018, 8, 6), gold, 0, .225, 0, ln);
-  b.add(new T.TorusGeometry(.02, .006, 6, 12), brass, 0, .25, 0, ln);
+  // lantern staff tilted out so the light clears the hat from above
+  const staff = joint(b.main.hand, 0, -.03, 0); staff.rotation.z = -.14;
+  const brass = b.m(0xb8863e, { metalness: .55, roughness: .4 });
+  b.add(new T.CylinderGeometry(.019, .024, 1.72, 10), brass, 0, .26, 0, staff);
+  [-.45, .3, .95].forEach(yy => b.add(new T.TorusGeometry(.026, .008, 6, 14), gold, 0, yy, 0, staff).rotation.x = Math.PI / 2);
+  const ln = joint(staff, 0, 1.18, 0);
+  b.add(new T.CylinderGeometry(.062, .05, .028, 6), brass, 0, -.005, 0, ln);
+  b.add(new T.CylinderGeometry(.032, .02, .05, 6), brass, 0, -.04, 0, ln);
+  for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; b.add(new T.CylinderGeometry(.006, .006, .13, 4), brass, Math.cos(a) * .056, .07, Math.sin(a) * .056, ln); }
+  b.add(new T.CylinderGeometry(.05, .05, .12, 6), b.m(0xd88a2a, { transparent: true, opacity: .55, emissive: 0x7a3a00, roughness: .3 }), 0, .07, 0, ln);
+  b.add(new T.CylinderGeometry(.095, .095, .012, 6), brass, 0, .14, 0, ln);
+  b.add(new T.ConeGeometry(.08, .08, 6), brass, 0, .185, 0, ln);
+  b.add(new T.SphereGeometry(.016, 8, 6), gold, 0, .235, 0, ln);
+  b.add(new T.TorusGeometry(.02, .006, 6, 12), brass, 0, .262, 0, ln);
   b.orbMat = basic(0xffd27a, { fog: false });
-  b.orb = new T.Mesh(new T.SphereGeometry(.045, 16, 12), b.orbMat); b.orb.position.y = .07; ln.add(b.orb);
+  b.orb = new T.Mesh(new T.SphereGeometry(.038, 16, 12), b.orbMat); b.orb.position.y = .07; ln.add(b.orb);
   b.orb.add(halo(0xffc860, .8, .55));
   b.staff = staff;
   b.root.scale.setScalar(.9);
   return b;
 }
 
+/* ---------- enemies ---------- */
+function toes(b, mat, ankle, L, n = 3, s = 1) {
+  const h = L.foot[1] * 1.4;
+  blob(b, mat, [L.foot[0] * 1.1 * s, h * .55, L.foot[2] * 1.05 * s], [0, -h * .55, L.foot[2] * .5], ankle);
+  for (let i = 0; i < n; i++) { const x = (i - (n - 1) / 2) * L.foot[0] * .7 * s; const t = b.add(new T.ConeGeometry(L.foot[0] * .32 * s, L.foot[2] * .55 * s, 5), mat, x, -h * .8, L.foot[2] * 1.45 * s, ankle); t.rotation.x = Math.PI / 2; }
+}
+function teleCone(b, r, w = 1.24) { b.tele = flat(new T.CircleGeometry(r, 18, -Math.PI / 2 - w / 2, w), decalMat(0xff3b2f, .3)); b.tele.visible = false; b.root.add(b.tele); }
+function aimLine(b, color = 0xff3b2f) {
+  const lg = new T.PlaneGeometry(.09, 1); lg.translate(0, .5, 0);
+  b.line = new T.Mesh(lg, decalMat(color, .25)); b.line.rotation.x = Math.PI / 2; b.line.position.set(0, .05, .35);
+  b.line.scale.y = 14; b.line.visible = false; b.line.renderOrder = 2; b.root.add(b.line);
+}
+function glowEyes(b, color, x, y, z, r = .018, socket = 0) {
+  const g = basic(color, { fog: false }), dk = basic(0x050404);
+  [-1, 1].forEach(s => { if (socket) blob(b, dk, [r * 1.9, r * 1.5, r], [s * x, y, z - r * .4], b.head); blob(b, g, [r, r * .8, r * .6], [s * x, y, z], b.head); });
+}
+
+// Goblin: small, pitched forward on bent knees, ears swept back, jaw thrust out, blade arm pulled in high
 function buildGoblin() {
-  const b = rigBase(0);
-  humanoid(b, { skin: 0x6f9a3e, top: 0x5a3b22, legs: 0x3a2a1c, boots: 0x2a1e14, arm: 0x6f9a3e,
-    thigh: [.19, .05, .04], shin: [.19, .04, .03], upper: [.17, .038, .03], fore: [.16, .032, .026], chest: [.15, .13, .11], belly: [.13, .11, .1],
-    pelvis: [.13, .07, .09], neck: .04, head: .12, headS: [1.2, 1, 1.12], shW: .16, hipW: .07, hand: .035, foot: [.04, .03, .08], slouch: .3 });
-  const skin = b.mt.skin;
-  [-1, 1].forEach(s => { const e = b.add(new T.ConeGeometry(.045, .2, 10), skin, s * .15, .13, -.01, b.head); e.rotation.z = s * -1.2; });
-  blob(b, skin, [.03, .03, .05], [0, .1, .13], b.head);
-  eyes(b, 0xfff066, .05, .13, .115, .02);
+  const b = rigBase(0), skinC = 0x6f9a3e;
+  humanoid(b, { skin: skinC, top: 0x5a3b22, legs: 0x3a2a1c, boots: skinC, arm: skinC,
+    thigh: [.2, .05, .04], shin: [.2, .04, .03], upper: [.16, .04, .03], fore: [.15, .036, .028], chest: [.15, .13, .11], belly: [.12, .1, .09],
+    pelvis: [.12, .07, .09], neck: .03, head: .12, headS: [1.12, .95, 1.08], shW: .15, hipW: .07, hand: .034, foot: [.042, .03, .085], slouch: .42 });
+  b.crouch = .5; b.tilt = .14;
+  const skin = b.mt.skin, vest = b.mt.top, dark = b.m(0x231a12);
+  swapHead(b, headGeo({ crown: .92, cheek: 1, jaw: .86, chin: .5, brow: .16, jawFwd: .3, nose: .16, len: .95, back: .95 }), [1.12, .95, 1.08]);
+  swapTorso(b, { bh: b.L.belly[1] + .06, ch: .13, waist: .1, rib: .135, chest: .15, shoulder: .15, front: .85, backD: .9 }, vest);
+  b.add(new T.BoxGeometry(.03, .2, .02), skin, 0, .1, .12, b.chest);
+  cloth(b, vest, drape(.12, .14, .07, { folds: 7, amp: .01, tatter: 7, tatterLen: .05 }), b.spine, 0, .05, 0);
+  cloth(b, dark, drape(.1, .13, .12, { folds: 6, amp: .01, tatter: 5, tatterLen: .05 }), b.hips, 0, .02, 0);
+  [-1, 1].forEach(s => { const e = b.add(new T.ConeGeometry(.06, .26, 6), skin, s * .13, .14, -.02, b.head); e.scale.z = .3; e.rotation.set(-.5, s * .5, s * -1.25); });
+  for (let i = 0; i < 4; i++) { const t = b.add(new T.ConeGeometry(.007, .022, 4), b.m(0xe8dfc6), (i - 1.5) * .022, .05, .135, b.head); t.rotation.x = Math.PI; }
+  glowEyes(b, 0xfff066, .045, .125, .118, .018);
+  clearFeet(b); b.legsJ.forEach(l => toes(b, skin, l.ankle, b.L));
+  clearHands(b, [b.main]); fist(b, skin, .036, b.main.hand);
   const w = joint(b.main.hand, 0, -.03, .01);
-  b.add(new T.CylinderGeometry(.015, .015, .08, 8), b.m(0x3b2616), 0, .02, 0, w);
-  const bl = b.add(new T.CylinderGeometry(.012, .028, .32, 4), b.m(0xb9c0c8, { metalness: .7, roughness: .3 }), 0, -.18, 0, w); bl.scale.z = .4;
+  b.add(new T.CylinderGeometry(.013, .015, .09, 8), b.m(0x3b2616), 0, .02, 0, w);
+  const steel = b.m(0xb9c0c8, { metalness: .6, roughness: .35 });
+  b.add(new T.BoxGeometry(.012, .26, .075), steel, 0, -.17, .018, w);
+  b.add(new T.BoxGeometry(.014, .04, .03), steel, 0, -.3, .045, w).rotation.x = .5;
   b.weapon = w;
-  b.tele = flat(new T.CircleGeometry(1.6, 18, -Math.PI / 2 - .62, 1.24), decalMat(0xff3b2f, .3));
-  b.tele.visible = false; b.root.add(b.tele);
+  teleCone(b, 1.6);
   return b;
 }
 
+// Skitter: low head, leg-bearing thorax, heavy abdomen; faceted carapace with dark seams; legs fold out then down to the floor
 function buildSkitter() {
   const b = rigBase(0); b.kind = 'spider';
-  const shell = b.m(0x2a1a14, { roughness: .45, metalness: .2 });
+  const shell = b.m(0x2a1a14, { roughness: .5, metalness: .15, flatShading: true }), shellL = b.m(0x3e2a1e, { roughness: .5, flatShading: true }), seam = b.m(0x0a0605);
   const body = joint(b.rig, 0, .26, 0); b.body = body;
-  blob(b, shell, [.24, .15, .3], [0, .03, -.2], body);
-  blob(b, shell, [.15, .1, .16], [0, 0, .08], body);
+  const thor = new T.Mesh(new T.IcosahedronGeometry(.13, 1), shell); thor.scale.set(1.1, .55, 1.05); thor.position.set(0, .02, .03); thor.castShadow = true; body.add(thor);
+  const ridge = b.add(new T.BoxGeometry(.03, .03, .2), shellL, 0, .09, .03, body); ridge.rotation.z = Math.PI / 4;
+  blob(b, seam, [.06, .05, .06], [0, .02, -.1], body);
+  const abd = new T.Mesh(new T.IcosahedronGeometry(.2, 1), shell); abd.scale.set(1.15, .72, 1.35); abd.position.set(0, .07, -.3); abd.castShadow = true; body.add(abd);
+  [0, 1, 2].forEach(i => { const pl = new T.Mesh(shellGeo(.2 - i * .02, 0, Math.PI * 2, 0, 1.0, 10), i % 2 ? shellL : shell); pl.material.flatShading = true; pl.scale.set(1.18, .8, .55); pl.position.set(0, .1 - i * .012, -.2 - i * .1); pl.rotation.x = -.35; body.add(pl); });
+  [-.2, -.3, -.4].forEach(z => { const r = b.add(new T.TorusGeometry(.19, .012, 4, 16), seam, 0, .07, z, body); r.scale.set(1.15, .7, 1); });
   const lava = basic(0xff6a1a, { fog: false });
-  [[-.08, .15, -.15], [.09, .14, -.25], [0, .16, -.06], [-.05, .12, -.33]].forEach(p => blob(b, lava, [.035, .02, .035], p, body));
-  [[-.04, .05, .22], [.04, .05, .22], [-.07, .04, .2], [.07, .04, .2]].forEach(p => blob(b, basic(0xffe14a), [.018, .018, .015], p, body));
-  const w = joint(body, 0, -.02, .23);
-  [-1, 1].forEach(s => { const f = b.add(new T.ConeGeometry(.025, .14, 8), b.m(0xff8a3a), s * .045, 0, .05, w); f.rotation.x = Math.PI / 2; f.rotation.z = s * .3; });
+  [[-.08, .17, -.25], [.09, .16, -.34], [0, .19, -.18], [-.05, .14, -.42]].forEach(p => blob(b, lava, [.03, .016, .03], p, body));
+  const hd = new T.Mesh(new T.IcosahedronGeometry(.075, 1), shellL); hd.scale.set(1.1, .7, 1); hd.position.set(0, -.03, .17); body.add(hd);
+  [[-.03, -.01, .24], [.03, -.01, .24], [-.055, -.02, .225], [.055, -.02, .225], [-.018, .015, .225], [.018, .015, .225]].forEach(p => blob(b, basic(0xffe14a, { fog: false }), [.013, .013, .011], p, body));
+  const w = joint(body, 0, -.07, .22);
+  [-1, 1].forEach(s => { const f = b.add(new T.ConeGeometry(.022, .14, 6), b.m(0xc86a2a), s * .04, 0, .05, w); f.rotation.x = Math.PI / 2; f.rotation.z = s * .35; });
   b.weapon = w;
   b.spLegs = [];
-  [-1, 1].forEach(sd => [.14, .06, -.03, -.12].forEach((z, i) => {
+  const fem = [.27, .2, .21, .25];
+  [-1, 1].forEach(sd => [.12, .05, -.02, -.09].forEach((z, i) => {
     const hip = joint(body, sd * .1, 0, z); hip.rotation.order = 'YZX';
-    limb(b, shell, [.22, .025, .02], hip);
-    const knee = joint(hip, 0, -.22, 0);
-    limb(b, shell, [.26, .02, .008], knee);
+    const f = fem[i], tib = (.26 + .461 * f) / .995;
+    limb(b, shell, [f, .027, .02], hip);
+    blob(b, shellL, [.026, .026, .026], [0, -f, 0], hip);
+    const knee = joint(hip, 0, -f, 0);
+    limb(b, shell, [tib, .02, .005], knee);
+    const sp = b.add(new T.ConeGeometry(.008, .05, 4), shellL, .01 * sd, -tib * .35, 0, knee); sp.rotation.z = sd * .9;
     b.spLegs.push({ hip, knee, sd, fan: -sd * [.7, .25, -.25, -.7][i], g: (i + (sd > 0 ? 1 : 0)) % 2 });
   }));
   b.legs = [b.spLegs[0].hip, b.spLegs[4].hip];
-  b.tele = flat(new T.CircleGeometry(1.5, 18, -Math.PI / 2 - .62, 1.24), decalMat(0xff3b2f, .3));
-  b.tele.visible = false; b.root.add(b.tele);
+  teleCone(b, 1.5);
   return b;
 }
 
+// Imp: light lower body, narrow chest, forward head, curled horns, bat wings with jointed fingers and scalloped membrane
 function buildImp() {
-  const b = rigBase(0);
-  humanoid(b, { skin: 0xb8402a, top: 0xb8402a, legs: 0x8a2a1a, boots: 0x5a1a12, arm: 0xb8402a,
-    thigh: [.17, .045, .035], shin: [.18, .035, .025], upper: [.16, .034, .028], fore: [.15, .028, .022], chest: [.14, .13, .1], belly: [.12, .1, .09],
-    pelvis: [.11, .06, .08], neck: .035, head: .11, headS: [1.05, 1, 1.05], shW: .15, hipW: .06, hand: .03, foot: [.035, .025, .07], slouch: .15 });
-  [-1, 1].forEach(s => { const h = b.add(new T.ConeGeometry(.025, .14, 10), b.m(0x2a1a14), s * .07, .2, 0, b.head); h.rotation.z = s * -.35; h.rotation.x = -.3; });
-  eyes(b, 0xffe14a, .045, .11, .1, .018);
-  const wingMat = b.m(0x5a1a12); wingMat.side = T.DoubleSide;
+  const b = rigBase(0), red = 0xb8402a;
+  humanoid(b, { skin: red, top: red, legs: 0x8a2a1a, boots: 0x5a1a12, arm: red,
+    thigh: [.18, .04, .03], shin: [.19, .032, .022], upper: [.16, .032, .026], fore: [.15, .027, .021], chest: [.13, .13, .1], belly: [.1, .1, .08],
+    pelvis: [.09, .055, .07], neck: .032, head: .11, headS: [1, 1.05, 1.05], shW: .14, hipW: .055, hand: .03, foot: [.032, .024, .07], slouch: .22 });
+  b.crouch = .25;
+  const skin = b.mt.skin, horn = b.m(0x2a1a14);
+  swapHead(b, headGeo({ crown: 1, cheek: .95, jaw: .55, chin: .18, brow: .14, jawFwd: .12, nose: .05, len: 1.12 }), [1, 1.05, 1.05]);
+  swapTorso(b, { bh: b.L.belly[1] + .06, ch: .13, waist: .075, rib: .11, chest: .13, shoulder: .135, front: .8, backD: .75 }, skin);
+  [-1, 1].forEach(s => {
+    let p = b.head, y = .2, r = .026;
+    for (let i = 0; i < 4; i++) { const g = new T.Group(); g.position.set(i ? 0 : s * .06, i ? y : .2, 0); g.rotation.set(i ? -.38 : -.25, 0, s * (i ? -.12 : -.3)); p.add(g); b.add(new T.ConeGeometry(r * .7, .055, 7), horn, 0, .027, 0, g).scale.y = 1; p = g; y = .05; r *= .8; }
+  });
+  glowEyes(b, 0xffe14a, .04, .1, .1, .016);
+  clearFeet(b); b.legsJ.forEach(l => toes(b, b.mt.boots, l.ankle, b.L, 3, .9));
+  const wingMat = b.m(0x5a1a12, { side: T.DoubleSide }), boneM = b.m(0x3a120c);
+  const sh = new T.Shape(); sh.moveTo(0, .03); sh.lineTo(.14, .12); sh.lineTo(.34, .17); sh.quadraticCurveTo(.29, .08, .38, 0); sh.quadraticCurveTo(.26, -.03, .3, -.15); sh.quadraticCurveTo(.15, -.05, .04, -.09); sh.lineTo(0, -.02);
+  const memG = new T.ShapeGeometry(sh, 8);
   b.wings = [-1, 1].map(s => {
-    const wj = joint(b.chest, s * .05, .18, -.09);
-    const wm = new T.Mesh(new T.CircleGeometry(.28, 3, Math.PI * .1, Math.PI * .55), wingMat); wm.rotation.y = s > 0 ? 0 : Math.PI; wm.castShadow = true; wj.add(wm);
+    const wj = joint(b.chest, s * .05, .2, -.09);
+    const g = new T.Group(); g.rotation.y = s > 0 ? 0 : Math.PI; g.rotation.x = -.25; wj.add(g);
+    const wm = new T.Mesh(memG, wingMat); wm.castShadow = true; g.add(wm);
+    const E = V(.14, .12, 0);
+    strut(b, boneM, V(0, .02, 0), E, .012, .009, g, 6);
+    [V(.34, .17, 0), V(.38, 0, 0), V(.3, -.15, 0)].forEach(F => strut(b, boneM, E, F, .007, .003, g, 5));
+    blob(b, boneM, [.016, .016, .016], [.14, .12, 0], g);
+    const cl = b.add(new T.ConeGeometry(.008, .04, 5), horn, .145, .145, 0, g); cl.rotation.z = -.3;
     return wj;
   });
-  const tail = joint(b.hips, 0, 0, -.08); tail.rotation.x = 2.2;
-  limb(b, b.mt.legs, [.28, .025, .01], tail);
+  const tail = joint(b.hips, 0, 0, -.07); tail.rotation.x = 2.2;
+  limb(b, b.mt.legs, [.3, .022, .01], tail);
+  const tip = b.add(new T.ConeGeometry(.03, .07, 4), b.mt.legs, 0, -.31, 0, tail); tip.rotation.x = Math.PI; tip.scale.z = .3;
   b.tail = tail;
   const w = joint(b.main.hand, 0, -.06, 0);
   w.add(glowMesh(new T.SphereGeometry(.07, 16, 12), 0xff7a30, .7));
   b.weapon = w;
-  const lg = new T.PlaneGeometry(.09, 1); lg.translate(0, .5, 0);
-  b.line = new T.Mesh(lg, decalMat(0xff5a1a, .25)); b.line.rotation.x = Math.PI / 2; b.line.position.set(0, .05, .35);
-  b.line.scale.y = 14; b.line.visible = false; b.line.renderOrder = 2; b.root.add(b.line);
+  aimLine(b, 0xff5a1a);
   return b;
 }
 
+// Archer: a skeleton; deep sockets, hollow ribcage around the spine, air between ribs, arms and string
 function buildArcher() {
-  const b = rigBase(0);
-  const bone = 0xd9d2bd;
-  humanoid(b, { skin: bone, top: bone, legs: bone, boots: bone, arm: bone,
-    thigh: [.33, .03, .025], shin: [.32, .026, .02], upper: [.25, .024, .02], fore: [.23, .02, .017], chest: [.12, .15, .09], belly: [.05, .12, .05],
-    pelvis: [.13, .06, .07], neck: .03, head: .12, headS: [.95, 1.05, 1.1], shW: .17, hipW: .08, hand: .028, foot: [.035, .02, .09] });
-  const bm = b.mt.top;
-  for (let i = 0; i < 4; i++) { const r = b.add(new T.TorusGeometry(.12 - i * .012, .012, 6, 20), bm, 0, .06 + i * .065, 0, b.chest); r.rotation.x = Math.PI / 2; r.scale.y = .75; }
-  blob(b, bm, [.08, .03, .07], [0, .02, .06], b.head);
-  eyes(b, 0x7ff3ff, .04, .13, .1, .022);
-  blob(b, basic(0x0c0c10), [.045, .03, .02], [-.04, .13, .095], b.head); blob(b, basic(0x0c0c10), [.045, .03, .02], [.04, .13, .095], b.head);
-  b.weapon = makeBow(b, b.off.hand, .42, 0x4a3020, 0xcfc6b0);
-  const lg = new T.PlaneGeometry(.09, 1); lg.translate(0, .5, 0);
-  b.line = new T.Mesh(lg, decalMat(0xff3b2f, .25)); b.line.rotation.x = Math.PI / 2; b.line.position.set(0, .05, .35);
-  b.line.scale.y = 14; b.line.visible = false; b.line.renderOrder = 2; b.root.add(b.line);
+  const b = rigBase(0), boneC = 0xd9d2bd;
+  humanoid(b, { skin: boneC, top: boneC, legs: boneC, boots: boneC, arm: boneC,
+    thigh: [.34, .024, .02], shin: [.33, .022, .018], upper: [.25, .021, .017], fore: [.23, .017, .015], chest: [.12, .15, .09], belly: [.03, .12, .03],
+    pelvis: [.1, .04, .05], neck: .024, head: .118, headS: [.95, 1.04, 1.08], shW: .17, hipW: .08, hand: .026, foot: [.032, .02, .085] });
+  const bm = b.mt.top, dk = b.m(0x16120e);
+  swapHead(b, headGeo({ crown: 1.02, cheek: 1.0, jaw: .6, chin: .34, brow: .2, jawFwd: .04, nose: 0, len: 1.02, back: 1.05 }), [.95, 1, 1.08]);
+  b.chest.children.slice().forEach(c => { if (c.isMesh && c.geometry.type === 'LatheGeometry') b.chest.remove(c); });
+  b.hips.children.slice().forEach(c => { if (c.isMesh) b.hips.remove(c); });
+  // spine column and open ribcage
+  for (let i = 0; i < 6; i++) blob(b, bm, [.022, .016, .022], [0, .02 + i * .045, -.05], b.chest);
+  for (let i = 0; i < 3; i++) blob(b, bm, [.022, .016, .022], [0, .02 + i * .05, -.03], b.spine);
+  [[.11, .25], [.12, .2], [.118, .15], [.108, .1], [.09, .055]].forEach(([r, y], i) => {
+    const g = new T.Group(); g.position.set(0, y + .02, -.035); g.rotation.x = Math.PI / 2 + .3; b.chest.add(g);
+    const rib = new T.Mesh(new T.TorusGeometry(r, .01, 5, 18, Math.PI * 1.45), bm); rib.rotation.z = Math.PI * .775; rib.scale.y = .8; rib.castShadow = true; g.add(rib);
+  });
+  b.arms.forEach(a => { strut(b, bm, V(0, .3, .02), V(a.sd * .17, .27, 0), .011, .009, b.chest, 5); blob(b, bm, [.03, .028, .03], [0, 0, 0], a.sh); blob(b, bm, [.022, .022, .022], [0, 0, 0], a.el); });
+  [-1, 1].forEach(s => { const pw = new T.Mesh(shellGeo(.07, 0, Math.PI, 0, 1.2, 10), bm); pw.material.side = T.DoubleSide; pw.position.set(s * .05, .01, -.01); pw.rotation.set(0, s * .5, s * .4); b.hips.add(pw); });
+  blob(b, bm, [.05, .025, .03], [0, -.02, -.02], b.hips);
+  b.legsJ.forEach(l => { blob(b, bm, [.032, .03, .032], [0, 0, 0], l.hip); blob(b, bm, [.028, .026, .03], [0, 0, 0], l.knee); });
+  clearFeet(b); b.legsJ.forEach(l => toes(b, bm, l.ankle, b.L, 3, .8));
+  // skull: sockets, cheekbones, nasal gap, separate lower jaw
+  const hc = b.L.head * .95;
+  glowEyes(b, 0x7ff3ff, .038, hc + .005, .1, .012, 1);
+  blob(b, dk, [.012, .018, .01], [0, hc - .03, .11], b.head);
+  [-1, 1].forEach(s => blob(b, bm, [.025, .018, .03], [s * .07, hc - .025, .07], b.head));
+  const jaw = b.add(new T.TorusGeometry(.055, .014, 5, 14, Math.PI), bm, 0, hc - .085, .045, b.head); jaw.rotation.set(Math.PI / 2 + .25, 0, Math.PI);
+  for (let i = 0; i < 6; i++) b.add(new T.BoxGeometry(.009, .012, .006), bm, (i - 2.5) * .013, hc - .065, .1, b.head);
+  // weathered rag and bracer on the bow arm
+  cloth(b, b.m(0x4a3a2a, { side: T.DoubleSide }), drape(.04, .07, .16, { folds: 5, amp: .01, tatter: 5, tatterLen: .06 }), b.off.sh, 0, .03, 0);
+  cloth(b, b.m(0x3a2618), drape(.032, .028, .1, { folds: 0, seg: 12 }), b.off.el, 0, -.08, 0);
+  clearHands(b); b.arms.forEach(a => fist(b, bm, .026, a.hand));
+  b.weapon = makeBow(b, b.off.hand, .44, 0x4a3020, 0xcfc6b0);
+  aimLine(b);
   return b;
 }
 
@@ -1566,47 +1754,98 @@ function slamDecal(b, r) {
   b.slamFill = flat(new T.CircleGeometry(r, 48), decalMat(0xff3b2f, .28));
   b.slam.add(b.slamFill); scene.add(b.slam);
 }
+
+// Orc: leads with jaw, shoulders and swing; head low between the traps, one forged pauldron, the other shoulder bare
 function buildOrc() {
   const b = rigBase(0);
-  humanoid(b, Object.assign({ skin: 0x5f7044, top: 0x3d3d44, legs: 0x2f2a24, boots: 0x231d18, arm: 0x5f7044, slouch: .12 }, BULKY));
-  const metal = b.m(0x4a4a52, { metalness: .5, roughness: .45 });
-  b.arms.forEach(a => blob(b, metal, [.13, .09, .14], [0, .04, 0], a.sh));
-  blob(b, b.m(0x5b3a22), [.27, .06, .2], [0, .03, 0], b.spine);
-  [-1, 1].forEach(s => b.add(new T.ConeGeometry(.022, .08, 8), b.m(0xeae2cc), s * .05, .04, .12, b.head));
-  blob(b, b.mt.skin, [.1, .06, .07], [0, .06, .08], b.head);
-  eyes(b, 0xff4030, .055, .15, .12, .02);
-  const w = joint(b.main.hand, 0, -.04, 0);
-  b.add(new T.CylinderGeometry(.035, .04, .6, 12), b.m(0x3b2616), 0, -.22, 0, w);
-  b.add(new T.CylinderGeometry(.13, .1, .38, 14), b.m(0x4a3020), 0, -.6, 0, w);
+  humanoid(b, Object.assign({ skin: 0x5f7044, top: 0x3d3d44, legs: 0x2f2a24, boots: 0x231d18, arm: 0x5f7044, slouch: .16 }, BULKY,
+    { neck: .055, head: .13, fore: [.25, .1, .072], upper: [.27, .092, .074], chest: [.34, .27, .23] }));
+  const skin = b.mt.skin, iron = b.m(0x4a4a52, { metalness: .5, roughness: .45 }), ironD = b.m(0x2e2e34, { metalness: .5, roughness: .5 }), leather = b.m(0x5b3a22);
+  swapHead(b, headGeo({ crown: .82, cheek: .95, jaw: 1.1, chin: .92, brow: .22, jawFwd: .2, nose: .08, len: .92, flat: 1 }), [1.08, .95, 1.05]);
+  swapTorso(b, { bh: b.L.belly[1] + .06, ch: .27, waist: .24, rib: .33, chest: .36, shoulder: .37, front: .82, backD: .8 }, b.mt.top);
+  [-1, 1].forEach(s => { const tr = blob(b, skin, [.14, .1, .12], [s * .13, .38, -.02], b.chest); tr.rotation.z = s * .5; });
+  blob(b, skin, [.16, .12, .08], [0, .28, .13], b.chest);
+  [-1, 1].forEach(s => { const t = b.add(new T.ConeGeometry(.02, .085, 7), b.m(0xeae2cc), s * .06, .03, .12, b.head); t.rotation.set(-.15, 0, s * -.2); });
+  glowEyes(b, 0xff4030, .045, .16, .132, .011, 1);
+  blob(b, b.mt.legs, [.29, .07, .22], [0, .03, 0], b.spine);
+  b.add(new T.BoxGeometry(.07, .06, .03), b.m(0x8a7a5a, { metalness: .5 }), 0, .03, .22, b.spine);
+  b.add(new T.BoxGeometry(.16, .26, .02), leather, 0, -.12, .17, b.hips);
+  const main = b.main, bare = b.off;
+  [[.15, 1.1, .07], [.165, .95, .02]].forEach(([r, th, y], i) => { const p = plate(b, i ? ironD : iron, ironD, r, th, main.sh, .03, y, 0, 1.1, .6, 1.15); p.rotation.z = -.35; });
+  for (let i = 0; i < 4; i++) { const a = i / 4 * Math.PI * 2; blob(b, b.m(0x9a9aa2, { metalness: .6 }), [.012, .012, .012], [.03 + Math.cos(a) * .12, .08, Math.sin(a) * .12], main.sh); }
+  const strap = b.add(new T.BoxGeometry(.05, .62, .02), leather, -.02, .2, .19, b.chest); strap.rotation.z = .75;
+  blob(b, skin, [.12, .1, .12], [0, -.02, 0], bare.sh);
+  b.arms.forEach(a => cloth(b, leather, drape(.085, .08, .12, { folds: 0, seg: 14 }), a.el, 0, -.1, 0));
+  clearHands(b); b.arms.forEach(a => fist(b, skin, .075, a.hand));
+  clearFeet(b); b.legsJ.forEach(l => shoe(b, b.mt.boots, b.L, l.ankle, { w: 1.1 }));
+  const w = joint(b.main.hand, 0, -.06, 0);
+  b.add(new T.CylinderGeometry(.03, .035, .66, 10), b.m(0x3b2616), 0, -.2, 0, w);
+  b.add(new T.CylinderGeometry(.11, .1, .3, 8), iron, 0, -.62, 0, w);
+  [-.5, -.74].forEach(y => b.add(new T.CylinderGeometry(.116, .116, .03, 8), ironD, 0, y, 0, w));
+  for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2, f = b.add(new T.BoxGeometry(.02, .24, .07), iron, Math.cos(a) * .11, -.62, Math.sin(a) * .11, w); f.rotation.y = -a; }
+  b.add(new T.ConeGeometry(.04, .1, 6), iron, 0, -.82, 0, w).rotation.x = Math.PI;
   b.weapon = w;
   slamDecal(b, 1.92);
   return b;
 }
+
+// Brute: a low, barrel-shaped mass on short legs; small head sunk forward under a hunched back, long arms and heavy fists
 function buildBrute() {
   const b = rigBase(0), rock = 0x2e2420;
-  humanoid(b, Object.assign({ skin: rock, top: rock, legs: rock, boots: 0x231b18, arm: rock, slouch: .2 }, BULKY, { chest: [.36, .28, .24], upper: [.27, .1, .085], fore: [.25, .095, .08], hand: .11 }));
-  const lava = basic(0xff6a1a, { fog: false });
-  [[.1, .2, .2], [-.12, .1, .21], [.02, .32, .18]].forEach(p => blob(b, lava, [.05, .015, .01], p, b.chest));
-  b.arms.forEach(a => { blob(b, lava, [.03, .05, .01], [0, -.12, .085], a.sh); blob(b, b.mt.top, [.15, .11, .15], [0, .05, 0], a.sh); });
-  eyes(b, 0xffb347, .05, .15, .12, .024);
-  blob(b, lava, [.06, .06, .06], [0, -.1, .02], b.main.hand);
+  humanoid(b, { skin: rock, top: rock, legs: rock, boots: 0x231b18, arm: rock, slouch: .32,
+    thigh: [.24, .12, .1], shin: [.22, .105, .09], upper: [.36, .11, .09], fore: [.34, .105, .09], chest: [.38, .3, .26], belly: [.34, .24, .25],
+    pelvis: [.34, .15, .24], neck: .05, head: .1, headS: [1.1, .95, 1.05], shW: .38, hipW: .18, hand: .13, foot: [.1, .06, .17] });
+  const skin = b.mt.skin, lava = basic(0xff6a1a, { fog: false }), wrap = b.m(0x6a5a44, { side: T.DoubleSide });
+  swapTorso(b, { bh: b.L.belly[1] + .06, ch: .3, waist: .36, rib: .42, chest: .42, shoulder: .38, front: .92, backD: 1 }, skin);
+  b.neck.position.set(0, b.L.chest[1] * 1.15, .16);
+  swapHead(b, headGeo({ crown: .85, cheek: 1, jaw: 1.05, chin: .8, brow: .25, jawFwd: .12, nose: .05, len: .85, flat: 1 }), [1.1, .95, 1.05]);
+  blob(b, skin, [.34, .22, .22], [0, .36, -.12], b.chest);
+  [[.1, .2, .26], [-.12, .1, .27], [.02, .32, .24], [-.18, .3, -.2], [.14, .4, -.18]].forEach(p => blob(b, lava, [.05, .015, .012], p, b.chest));
+  glowEyes(b, 0xffb347, .035, .11, .1, .011, 1);
+  cloth(b, b.m(0x3a2a1c), drape(.37, .39, .1, { folds: 9, amp: .012 }), b.spine, 0, .08, 0);
+  b.add(new T.BoxGeometry(.1, .08, .04), b.m(0x8a7a5a, { metalness: .5 }), 0, .03, .38, b.spine);
+  b.arms.forEach(a => { blob(b, lava, [.03, .05, .01], [0, -.14, .1], a.sh); blob(b, skin, [.17, .13, .17], [0, .04, 0], a.sh); cloth(b, wrap, drape(.1, .11, .12, { folds: 7, amp: .012, amp2: .006 }), a.el, 0, -.2, 0); });
+  clearHands(b); b.arms.forEach(a => { const f = fist(b, skin, .13, a.hand); blob(b, lava, [.04, .04, .04], [.06, -.02, .1], f); });
+  clearFeet(b); b.legsJ.forEach(l => toes(b, b.mt.boots, l.ankle, b.L, 3, 1.1));
   b.weapon = b.main.hand;
   b.root.scale.setScalar(1.1);
   slamDecal(b, 1.92);
   return b;
 }
+
+// Guardian (The Warden): sealed plate, helm fused to the gorget, a slit visor, flat broad pauldrons, one diamond motif on helm, chest and hammer
 function buildBoss() {
-  const b = rigBase(0), iron = 0x2a2c33;
-  humanoid(b, Object.assign({ skin: 0x3a3d47, top: 0x3a3d47, legs: iron, boots: 0x1c1d22, arm: 0x3a3d47, slouch: .1 }, BULKY, { chest: [.36, .29, .25] }));
-  const plate = b.m(0x4a4e5a, { metalness: .6, roughness: .38 });
-  b.arms.forEach(a => blob(b, plate, [.17, .12, .17], [0, .06, 0], a.sh));
-  blob(b, b.m(0x5a3a2a), [.3, .08, .23], [0, .05, 0], b.spine);
-  blob(b, plate, [.16, .14, .16], [0, .16, 0], b.head);
-  [-1, 1].forEach(s => { const h = b.add(new T.ConeGeometry(.05, .32, 12), b.m(0xd8cfb8), s * .14, .3, 0, b.head); h.rotation.z = s * -.7; });
-  blob(b, basic(0xff8a2a, { fog: false }), [.11, .018, .02], [0, .15, .155], b.head);
-  const w = joint(b.main.hand, 0, -.02, 0);
-  b.add(new T.CylinderGeometry(.04, .045, 1.15, 12), b.m(0x3b2616), 0, -.35, 0, w);
-  b.add(new T.BoxGeometry(.5, .32, .32), b.m(0x50545e, { metalness: .7, roughness: .35 }), 0, -.95, 0, w);
+  const b = rigBase(0);
+  humanoid(b, Object.assign({ skin: 0x3a3d47, top: 0x3a3d47, legs: 0x2a2c33, boots: 0x1c1d22, arm: 0x3a3d47, slouch: .06 }, BULKY, { chest: [.36, .29, .25], head: .15, neck: .1 }));
+  const plateM = b.m(0x4a4e5a, { metalness: .55, roughness: .4 }), plateD = b.m(0x30333b, { metalness: .5, roughness: .45 }), brass = b.m(0x8a6a2a, { metalness: .6, roughness: .4 });
+  const glow = basic(0xff8a2a, { fog: false });
+  const diamond = (parent, x, y, z, s, ry = 0) => { const d = b.add(new T.OctahedronGeometry(s, 0), brass, x, y, z, parent); d.scale.set(1, 1.4, .35); d.rotation.y = ry; return d; };
+  swapHead(b, headGeo({ crown: .95, cheek: 1.02, jaw: 1, chin: .95, brow: .14, jawFwd: .05, nose: 0, len: 1.12, flat: 1 }), [1.05, 1.05, 1.08], plateM);
+  swapTorso(b, { bh: b.L.belly[1] + .06, ch: .29, waist: .26, rib: .32, chest: .37, shoulder: .36, front: .82, backD: .8 }, plateM);
+  cloth(b, plateM, drape(.13, .3, .2, { folds: 8, amp: .004, seg: 16 }), b.neck, 0, .12, 0);
+  b.add(new T.BoxGeometry(.2, .018, .02), glow, 0, .15, .165, b.head);
+  b.add(new T.BoxGeometry(.012, .1, .02), plateD, 0, .1, .17, b.head);
+  diamond(b.head, 0, .23, .155, .03);
+  b.add(new T.BoxGeometry(.04, .2, .06), plateD, 0, .27, -.02, b.head);
+  diamond(b.chest, 0, .26, .3, .07);
+  b.add(new T.BoxGeometry(.5, .025, .04), plateD, 0, .1, .26, b.chest);
+  b.arms.forEach(a => {
+    [[.06, 0], [.0, .02], [-.06, .04]].forEach(([y, o], i) => { const p = b.add(new T.BoxGeometry(.27 - i * .02, .045, .3 - i * .02), i % 2 ? plateD : plateM, a.sd * (.02 + o), y + .05, 0, a.sh); p.rotation.z = a.sd * (-.42 - i * .1); });
+    cloth(b, plateM, drape(.1, .095, .18, { folds: 0, seg: 8 }), a.el, 0, -.03, 0);
+  });
+  blob(b, b.m(0x5a3a2a), [.3, .07, .23], [0, .04, 0], b.spine);
+  for (let i = 0; i < 5; i++) { const a = -1.1 + i * .55, t = b.add(new T.BoxGeometry(.13, .2, .025), i % 2 ? plateD : plateM, Math.sin(a) * .27, -.1, Math.cos(a) * .2, b.hips); t.rotation.set(-.12, a, 0); }
+  b.legsJ.forEach(l => { cloth(b, plateM, drape(.1, .085, .3, { folds: 0, seg: 8 }), l.knee, 0, -.02, 0); const kc = plate(b, plateM, plateD, .1, 1.1, l.knee, 0, 0, .04, 1, .8, .9); kc.rotation.x = Math.PI / 2 - .2; });
+  clearHands(b); b.arms.forEach(a => fist(b, plateD, .075, a.hand));
+  clearFeet(b); b.legsJ.forEach(l => shoe(b, plateD, b.L, l.ankle, { w: 1.25, len: 1.1 }));
+  const w = joint(b.main.hand, 0, -.04, 0);
+  b.add(new T.CylinderGeometry(.04, .045, 1.15, 10), b.m(0x3b2616), 0, -.35, 0, w);
+  [-.1, -.55, -.82].forEach(y => b.add(new T.CylinderGeometry(.052, .052, .05, 8), plateD, 0, y, 0, w));
+  const hh = new T.Group(); hh.position.y = -.98; w.add(hh);
+  const head = b.add(new T.CylinderGeometry(.16, .16, .44, 8), b.m(0x50545e, { metalness: .65, roughness: .35 }), 0, 0, 0, hh); head.rotation.z = Math.PI / 2;
+  [-1, 1].forEach(s => { const f = b.add(new T.CylinderGeometry(.185, .165, .06, 8), plateD, s * .25, 0, 0, hh); f.rotation.z = -s * Math.PI / 2; });
+  b.add(new T.CylinderGeometry(.07, .07, .34, 8), plateD, 0, 0, 0, hh);
+  diamond(hh, 0, 0, .16, .05); diamond(hh, 0, 0, -.16, .05);
   b.weapon = w;
   b.root.scale.setScalar(1.7);
   slamDecal(b, 1.76);
@@ -1616,24 +1855,167 @@ function buildBoss() {
   b.line = new T.Group(); b.line.add(b.lineMesh); b.line.visible = false; scene.add(b.line);
   return b;
 }
+
+// Boss (The Hollow King): a calm crowned ruler; thick crown with one dominant point, structured mantle, open robe panels, crown motif on the staff
+function crownRing(b, gold, parent, y, r, peaks) {
+  b.add(new T.CylinderGeometry(r, r * 1.04, .055, 28, 1, true), gold, 0, y, 0, parent).material.side = T.DoubleSide;
+  [y - .028, y + .028].forEach(yy => b.add(new T.TorusGeometry(r * 1.02, .009, 5, 28), gold, 0, yy, 0, parent).rotation.x = Math.PI / 2);
+  peaks.forEach(([a, h, w]) => { const c = b.add(new T.ConeGeometry(w, h, 4), gold, Math.sin(a) * r, y + .028 + h / 2, Math.cos(a) * r, parent); c.rotation.y = a; c.scale.z = .45; });
+}
 function buildGuardian(gc) {
   const st = { gcol: gc || stage().gcol }, b = rigBase(0);
   humanoid(b, { skin: 0xd9d2bd, top: st.gcol.robe, legs: st.gcol.robe, boots: st.gcol.robe, arm: st.gcol.robe, hand_c: 0xd9d2bd,
     upper: [.28, .055, .045], fore: [.26, .045, .035], chest: [.22, .2, .16], shW: .24 });
-  const robe = b.mt.top;
-  const skirt = b.add(new T.CylinderGeometry(.24, .5, .95, 22, 1, true), robe, 0, -.42, 0, b.hips); skirt.material.side = T.DoubleSide;
-  b.arms.forEach(a => b.add(new T.CylinderGeometry(.06, .12, .24, 14, 1, true), robe, 0, -.16, 0, a.el).material.side = T.DoubleSide);
-  blob(b, b.m(0x1c1a22, { metalness: .5, roughness: .5 }), [.3, .07, .18], [0, .36, 0], b.chest);
-  eyes(b, st.gcol.glow, .045, .13, .11, .024);
-  blob(b, basic(0x0c0c10), [.05, .035, .02], [-.045, .13, .1], b.head); blob(b, basic(0x0c0c10), [.05, .035, .02], [.045, .13, .1], b.head);
-  for (let i = 0; i < 5; i++) { const a = i / 5 * TAU; b.add(new T.ConeGeometry(.03, .14, 10), b.m(0xd8a838, { metalness: .8, roughness: .3 }), Math.cos(a) * .11, .27, Math.sin(a) * .11, b.head); }
+  const robe = b.mt.top, inner = b.m(0x2a2236, { side: T.DoubleSide }), gold = b.m(0xd8a838, { metalness: .7, roughness: .32, side: T.DoubleSide });
+  robe.side = T.DoubleSide;
+  swapHead(b, headGeo({ crown: 1, cheek: .98, jaw: .66, chin: .4, brow: .16, jawFwd: .02, nose: 0, len: 1.08 }), [1, 1.08, 1.05]);
+  swapTorso(b, { bh: b.L.belly[1] + .06, ch: .2, waist: .17, rib: .2, chest: .23, shoulder: .235, front: .78, backD: .7 }, robe);
+  const hc = b.L.head * .95;
+  glowEyes(b, st.gcol.glow, .04, hc + .005, .105, .016, 1);
+  crownRing(b, gold, b.head, hc + .1, .118, [[0, .2, .035], [.75, .07, .022], [-.75, .07, .022], [1.6, .06, .02], [-1.6, .06, .02], [2.5, .05, .018], [-2.5, .05, .018]]);
+  cloth(b, robe, drape(.15, .36, .22, { folds: 6, amp: .006, seg: 24 }), b.chest, 0, b.L.chest[1] * 1.45, 0);
+  cloth(b, gold, drape(.355, .362, .022, { folds: 6, amp: .006, seg: 24, t0: .9, t1: 1 }), b.chest, 0, b.L.chest[1] * 1.45 - .22, 0);
+  cloth(b, inner, drape(.22, .46, .95, { folds: 9, amp: .015 }), b.hips, 0, .02, 0);
+  cloth(b, robe, drape(.235, .5, .96, { th0: .42, thL: Math.PI * 2 - .84, folds: 10, amp: .025, amp2: .01 }), b.hips, 0, .03, 0);
+  [-1, 1].forEach(s => { const t = b.add(new T.BoxGeometry(.03, .92, .012), gold, s * .19, -.42, .32, b.hips); t.rotation.set(-.27, 0, s * -.2); });
+  b.arms.forEach(a => cloth(b, robe, drape(.06, .13, .26, { folds: 6, amp: .01 }), a.el, 0, .02, 0));
+  clearHands(b, [b.main]); fist(b, b.mt.hand, .045, b.main.hand);
   const w = joint(b.main.hand, 0, -.03, 0);
-  b.add(new T.CylinderGeometry(.03, .03, 1.8, 12), b.m(0x1c1a22), 0, .25, 0, w);
-  b.orb = b.add(new T.SphereGeometry(.13, 20, 16), basic(st.gcol.glow, { fog: false }), 0, 1.18, 0, w);
+  b.add(new T.CylinderGeometry(.028, .032, 1.8, 10), b.m(0x1c1a22), 0, .25, 0, w);
+  crownRing(b, gold, w, 1.06, .075, [[0, .14, .025], [Math.PI, .14, .025], [Math.PI / 2, .08, .02], [-Math.PI / 2, .08, .02]]);
+  b.orb = b.add(new T.SphereGeometry(.1, 20, 16), basic(st.gcol.glow, { fog: false }), 0, 1.2, 0, w);
   b.orb.add(halo(st.gcol.glow, 1.4, .6));
   b.weapon = w;
   b.souls = [0, 1, 2].map(() => { const o = glowMesh(new T.SphereGeometry(.09, 16, 12), st.gcol.glow, .7); b.root.add(o); return o; });
   b.root.scale.setScalar(1.3);
+  return b;
+}
+
+// Final (The Lightless One): the Hollow King's last form; towering split crown, a collar that rises in two blades, a mantle opening into two long planes
+function buildFinal(gc) {
+  const st = { gcol: gc || stage().gcol }, b = rigBase(0);
+  humanoid(b, { skin: 0xcfc6b0, top: st.gcol.robe, legs: st.gcol.robe, boots: st.gcol.robe, arm: st.gcol.robe, hand_c: 0xcfc6b0,
+    thigh: [.4, .07, .055], shin: [.39, .055, .045], upper: [.3, .055, .045], fore: [.28, .045, .035], chest: [.26, .22, .17], belly: [.13, .16, .11], shW: .29 });
+  const robe = b.mt.top, voidM = basic(0x020203, { side: T.DoubleSide }), gold = b.m(0xc89a3a, { metalness: .7, roughness: .3, side: T.DoubleSide });
+  robe.side = T.DoubleSide;
+  const glowM = basic(st.gcol.glow, { fog: false });
+  swapHead(b, headGeo({ crown: 1, cheek: 1.02, jaw: .6, chin: .3, brow: .2, jawFwd: .02, nose: 0, len: 1.12 }), [.98, 1.1, 1.05]);
+  swapTorso(b, { bh: b.L.belly[1] + .06, ch: .22, waist: .13, rib: .22, chest: .27, shoulder: .29, front: .75, backD: .68 }, robe);
+  const hc = b.L.head * .95;
+  glowEyes(b, st.gcol.glow, .04, hc + .005, .108, .018, 1);
+  // tall crown, wide gaps between the spires
+  b.add(new T.TorusGeometry(.12, .012, 5, 28), gold, 0, hc + .1, 0, b.head).rotation.x = Math.PI / 2;
+  [[0, .42], [1.1, .3], [-1.1, .3], [2.2, .24], [-2.2, .24]].forEach(([a, h]) => { const c = b.add(new T.ConeGeometry(.022, h, 4), gold, Math.sin(a) * .12, hc + .1 + h / 2, Math.cos(a) * .12, b.head); c.rotation.set(Math.cos(a) * -.12, a, Math.sin(a) * .12); });
+  // split collar rising in two blades that frame the head
+  [-1, 1].forEach(s => { const c = new T.Mesh(shellGeo(.2, s > 0 ? Math.PI / 2 + .35 : Math.PI / 2 - 1.75, 1.4, .25, 1.2), gold); c.scale.set(1, 1.9, 1); c.position.y = b.L.chest[1] * 1.35; c.castShadow = true; b.chest.add(c); });
+  // ribbed chest plate, dark centre void where the mantle parts
+  for (let i = 0; i < 4; i++) b.add(new T.TorusGeometry(.2 - i * .015, .01, 4, 18, Math.PI * .8), gold, 0, .1 + i * .06, .02, b.chest).rotation.set(0, 0, Math.PI * .1);
+  // back mantle opening into two long planes with a dark gap between
+  const cj = joint(b.chest, 0, b.L.chest[1] * 1.25, -.05);
+  [-1, 1].forEach(s => { const m = cloth(b, robe, drape(.26, .62, 1.55, { th0: s > 0 ? Math.PI / 2 + .1 : Math.PI + .2, thL: Math.PI / 2 - .3, folds: 6, amp: .03, hemWave: .06 }), cj); m.scale.z = .85; });
+  cloth(b, voidM, drape(.2, .3, 1.2, { th0: Math.PI - .25, thL: .5, folds: 0 }), cj, 0, 0, .02);
+  b.cape = cj;
+  cloth(b, robe, drape(.15, .4, .98, { th0: .5, thL: Math.PI * 2 - 1, folds: 9, amp: .02, tatter: 9, tatterLen: .08 }), b.hips, 0, .03, 0);
+  cloth(b, voidM, drape(.12, .3, .9, { folds: 0 }), b.hips, 0, .02, 0);
+  b.arms.forEach(a => cloth(b, robe, drape(.06, .15, .3, { folds: 6, amp: .012, tatter: 6, tatterLen: .05 }), a.el, 0, .02, 0));
+  clearHands(b, [b.main]); fist(b, b.mt.hand, .046, b.main.hand);
+  // staff head splits into branches that cage the bright core
+  const w = joint(b.main.hand, 0, -.03, 0);
+  b.add(new T.CylinderGeometry(.026, .03, 1.9, 8), b.m(0x14121a), 0, .3, 0, w);
+  b.add(new T.TorusGeometry(.06, .012, 5, 16), gold, 0, 1.08, 0, w).rotation.x = Math.PI / 2;
+  for (let i = 0; i < 4; i++) {
+    const a = i / 4 * Math.PI * 2 + .4; let prev = V(Math.cos(a) * .05, 1.08, Math.sin(a) * .05);
+    [[.13, 1.2], [.12, 1.36], [.04, 1.46]].forEach(([r, y]) => { const p = V(Math.cos(a) * r, y, Math.sin(a) * r); strut(b, gold, prev, p, .012, .008, w, 5); prev = p; });
+  }
+  b.orb = b.add(new T.SphereGeometry(.09, 20, 16), glowM, 0, 1.28, 0, w);
+  b.orb.add(halo(st.gcol.glow, 1.6, .65));
+  b.weapon = w;
+  b.souls = [0, 1, 2].map(() => { const o = glowMesh(new T.SphereGeometry(.09, 16, 12), st.gcol.glow, .7); b.root.add(o); return o; });
+  b.root.scale.setScalar(1.3);
+  return b;
+}
+
+// Reaper: tall, thin and curled forward; face lost in the hood, heavy panels breaking into long tatters, bony hands, crescent clear of the head
+function buildReaper() {
+  const b = rigBase(0);
+  humanoid(b, { skin: 0xd9d2bd, top: 0x0d0d12, legs: 0x0d0d12, boots: 0x0d0d12, arm: 0x0d0d12, hand_c: 0xd9d2bd,
+    thigh: [.4, .06, .05], shin: [.39, .05, .04], upper: [.31, .045, .036], fore: [.29, .036, .028], chest: [.2, .21, .15], belly: [.13, .15, .11], shW: .23, slouch: .45 });
+  const robe = b.mt.top, voidM = basic(0x020203, { side: T.DoubleSide }), bone = b.mt.hand;
+  robe.side = T.DoubleSide;
+  const hc = b.L.head * .95;
+  const hood = new T.Mesh(shellGeo(.17, Math.PI / 2 + .55, Math.PI * 2 - 1.1, 0, 2.3), robe); hood.position.set(0, hc + .02, .035); hood.scale.set(1, 1.15, 1.25); hood.castShadow = true; b.head.add(hood);
+  const deep = new T.Mesh(shellGeo(.15, Math.PI / 2 + .5, Math.PI * 2 - 1, 0, 2.2), voidM); deep.position.set(0, hc + .02, .025); deep.scale.set(1, 1.12, 1.2); b.head.add(deep);
+  b.head.children.slice().forEach(c => { if (c.isMesh && c.geometry === SPH) c.material = voidM; });
+  b.neck.children.forEach(c => { if (c.isMesh) c.material = voidM; });
+  glowEyes(b, 0x6aff9a, .035, hc, .06, .016);
+  const hh = halo(0x6aff9a, .5, .45); hh.position.set(0, hc, .1); b.head.add(hh);
+  blob(b, robe, [.2, .16, .14], [0, .3, -.1], b.chest);
+  const topY = b.L.chest[1] * 1.3, fallH = b.hipY + .04 + b.L.belly[1] + .03 + topY;
+  for (let i = 0; i < 7; i++) {
+    const a0 = i / 7 * Math.PI * 2 - .3;
+    cloth(b, robe, drape(.2, .5, fallH * .98, { th0: a0, thL: Math.PI * 2 / 7 * .82, folds: 2, amp: .02, tatter: 3, tatterLen: .22, seg: 10 }), b.chest, 0, topY, 0);
+  }
+  cloth(b, voidM, drape(.17, .36, fallH * .85, { folds: 0, seg: 16 }), b.chest, 0, topY - .02, 0);
+  b.arms.forEach(a => { cloth(b, robe, drape(.055, .13, .27, { folds: 5, amp: .012, tatter: 5, tatterLen: .07 }), a.el, 0, .02, 0); });
+  clearHands(b); b.arms.forEach(a => {
+    const f = fist(b, bone, .036, a.hand);
+    for (let i = 0; i < 3; i++) { const fg = b.add(new T.CylinderGeometry(.006, .004, .07, 4), bone, .02 - i * .014, -.04, .03, f); fg.rotation.x = .5; }
+  });
+  const w = joint(b.main.hand, 0, -.03, 0);
+  b.add(new T.CylinderGeometry(.026, .032, 2.1, 8), b.m(0x2a2420), 0, .3, 0, w);
+  const cr = new T.Shape(); cr.absarc(0, 0, .62, Math.PI * .08, Math.PI * .72, false); cr.absarc(.1, -.08, .5, Math.PI * .68, Math.PI * .1, true);
+  const blade = new T.Mesh(new T.ExtrudeGeometry(cr, { depth: .02, bevelEnabled: true, bevelThickness: .006, bevelSize: .006, bevelSegments: 1, curveSegments: 24 }), b.m(0xb9c4cc, { metalness: .85, roughness: .22 }));
+  blade.position.set(-.08, 1.0, -.01); blade.rotation.z = -.15; blade.castShadow = true; w.add(blade);
+  b.add(new T.CylinderGeometry(.045, .045, .08, 8), b.m(0x4a4a52, { metalness: .6 }), 0, 1.33, 0, w);
+  blade.add(halo(0x6aff9a, 1.2, .35));
+  b.weapon = w;
+  b.tele = flat(new T.CircleGeometry(2.3, 28, -Math.PI / 2 - 1.15, 2.3), decalMat(0xff3b2f, .3));
+  b.tele.visible = false; b.root.add(b.tele);
+  slamDecal(b, 3.6);
+  b.root.scale.setScalar(1.45);
+  return b;
+}
+
+// Hoarder: the load tells the story; a sack sagging to one side with hard shapes pressing out, strap across the chest, body bent to balance it
+function sackGeo() {
+  const g = new T.SphereGeometry(1, 28, 20), p = g.attributes.position;
+  const bumps = [[.5, -.3, .75, .28], [-.6, -.1, .6, .22], [.1, -.65, -.6, .25]];
+  for (let i = 0; i < p.count; i++) {
+    let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const neck = sstep(.55, .95, y), bulge = 1 + .18 * sstep(.2, -.8, y);
+    const k = (1 - neck * .75) * bulge;
+    x *= k; z *= k;
+    if (z > .35) z = .35 + (z - .35) * .4;
+    let d = 0; bumps.forEach(([bx, by, bz, a]) => { const q = (x - bx) ** 2 + (y - by) ** 2 + (z - bz) ** 2; d += a * Math.exp(-q / .06); });
+    const n = Math.hypot(x, y, z) || 1; x += x / n * d; y += y / n * d; z += z / n * d;
+    p.setXYZ(i, x, y * 1.05, z);
+  }
+  g.computeVertexNormals(); return g;
+}
+function buildHoarder() {
+  const b = rigBase(0);
+  humanoid(b, { skin: 0xd8a838, top: 0x6a3a8a, legs: 0x3a2a1c, boots: 0x2a1e14, arm: 0xd8a838,
+    thigh: [.2, .056, .044], shin: [.2, .046, .034], upper: [.17, .042, .033], fore: [.16, .036, .029], chest: [.17, .15, .13], belly: [.16, .14, .13],
+    pelvis: [.14, .08, .1], neck: .04, head: .12, headS: [1.12, .98, 1.08], shW: .17, hipW: .1, hand: .042, foot: [.048, .032, .09], slouch: .42 });
+  b.crouch = .3; b.tilt = -.16;
+  b.mt.skin.metalness = .55; b.mt.skin.roughness = .32;
+  const skin = b.mt.skin, cloth1 = b.m(0x7a5a32, { roughness: .95 }), rope = b.m(0x4a3418), coin = b.m(0xffd23f, { metalness: .85, roughness: .25, emissive: 0x3a2600 });
+  swapHead(b, headGeo({ crown: .9, cheek: 1, jaw: .82, chin: .5, brow: .14, jawFwd: .25, nose: .15, len: .95 }), [1.12, .98, 1.08]);
+  [-1, 1].forEach(s => { const e = b.add(new T.ConeGeometry(.05, .22, 6), skin, s * .13, .13, -.02, b.head); e.scale.z = .3; e.rotation.set(-.4, s * .5, s * -1.2); });
+  glowEyes(b, 0xffffff, .045, .125, .118, .018);
+  for (let i = 0; i < 5; i++) { const a = i / 5 * TAU; b.add(new T.ConeGeometry(.022, .08, 6), b.m(0xffd23f, { metalness: .8, roughness: .25 }), Math.cos(a) * .07, .24, Math.sin(a) * .07, b.head); }
+  const sk = new T.Mesh(sackGeo(), cloth1); sk.scale.set(.26, .3, .24); sk.position.set(.1, .1, -.3); sk.rotation.set(.15, 0, .25); sk.castShadow = true; b.chest.add(sk);
+  const tie = new T.Group(); tie.position.set(.03, .4, -.27); tie.rotation.z = .25; b.chest.add(tie);
+  b.add(new T.TorusGeometry(.045, .016, 6, 14), rope, 0, 0, 0, tie).rotation.x = Math.PI / 2;
+  b.add(new T.ConeGeometry(.08, .1, 9, 1, true), cloth1, 0, .06, 0, tie).rotation.x = Math.PI;
+  for (let i = 0; i < 5; i++) { const c = b.add(new T.CylinderGeometry(.045, .045, .014, 12), coin, rand(-.05, .05), .1 + rand(0, .04), rand(-.04, .04), tie); c.rotation.set(rand(-1, 1), 0, rand(-1, 1)); }
+  const strap = b.add(new T.BoxGeometry(.04, .44, .02), rope, -.02, .16, .135, b.chest); strap.rotation.z = -.7;
+  b.add(new T.TorusGeometry(.16, .014, 5, 18), rope, 0, .02, 0, b.spine).rotation.x = Math.PI / 2;
+  sk.add(halo(0xffd23f, 3 / .27, .25));
+  clearFeet(b); b.legsJ.forEach((l, i) => { shoe(b, b.mt.boots, b.L, l.ankle, { w: 1.1 }); });
+  clearHands(b, [b.main]); fist(b, skin, .042, b.main.hand);
+  b.weapon = b.main.hand;
+  b.root.scale.setScalar(1.1);
   return b;
 }
 
@@ -1647,10 +2029,12 @@ function poseHumanoid(b, ph, mv, time, lean = 0, amp = 1) {
     l.knee.rotation.set(B * Math.max(0, c * sg) + .07, 0, 0);
     l.ankle.rotation.set(-l.hip.rotation.x * .45 - l.knee.rotation.x * .55, 0, 0);
   });
-  b.rig.position.y = (Math.abs(c) * .04 - .025) * mv + Math.sin(time * 2.2) * .004 * (1 - mv);
+  const cr = b.crouch || 0;
+  if (cr) b.legsJ.forEach(l => { l.hip.rotation.x -= cr * .5; l.knee.rotation.x += cr; l.ankle.rotation.x -= cr * .5; });
+  b.rig.position.y = (Math.abs(c) * .04 - .025) * mv + Math.sin(time * 2.2) * .004 * (1 - mv) - (b.L.thigh[0] + b.L.shin[0]) * (1 - Math.cos(cr * .5));
   b.hips.rotation.set(0, -s * .1 * mv, s * .03 * mv);
   b.spine.rotation.set(.03 + .07 * mv + b.slouch * .6 + lean, 0, 0);
-  b.chest.rotation.set(b.slouch * .4 + Math.sin(time * 2.2) * .012, s * .16 * mv, 0);
+  b.chest.rotation.set(b.slouch * .4 + Math.sin(time * 2.2) * .012, s * .16 * mv, b.tilt || 0);
   b.neck.rotation.set(-b.slouch * .7, 0, 0);
   b.head.rotation.set(-.04 * mv, -s * .07 * mv, 0);
   b.arms.forEach((a, i) => {
@@ -2671,7 +3055,7 @@ const TYPES = {
   voidling:    { build: buildSkitter, hp: 32, r: .34, speed: 4.8, windup: .32, recover: .4, poise: false, turn: 11, ai: 'goblin', tint: 0x9a6aff, onHit: 'weak', xp: 4, gold: 1, cost: .7, dmgMul: .9, blood: 0xb06aff },
   voidimp:     { build: buildImp, hp: 42, r: .34, speed: 3.0, windup: .7, recover: .3, poise: false, turn: 8, ai: 'archer', tint: 0x8a5aff, onHit: 'weak', shotColor: 0xc08aff, fire: true, xp: 7, gold: 2, cost: 1.3, dmgMul: 1.2, blood: 0xb06aff },
   voidbrute:   { build: buildBrute, hp: 185, r: .66, speed: 2.2, windup: .9, recover: 1, poise: true, turn: 4, ai: 'orc', tint: 0x7a4aff, onHit: 'weak', xp: 14, gold: 7, cost: 2.6, dmgMul: 1.2, blood: 0xb06aff },
-  final:       { build: () => buildGuardian({ robe: 0x08080c, glow: 0xff3b6a }), hp: 4600, r: .9, speed: 2.4, windup: .6, recover: .9, poise: true, turn: 5, ai: 'final', boss: true, title: 'The Lightless One', xp: 500, gold: 400, scale: 1.25, blood: 0xff3b6a },
+  final:       { build: () => buildFinal({ robe: 0x08080c, glow: 0xff3b6a }), hp: 4600, r: .9, speed: 2.4, windup: .6, recover: .9, poise: true, turn: 5, ai: 'final', boss: true, title: 'The Lightless One', xp: 500, gold: 400, scale: 1.25, blood: 0xff3b6a },
   boss:   { build: buildBoss,   hp: 1150, r: .95, speed: 2.4, windup: .8, recover: 1.3, poise: true, turn: 3, ai: 'boss', boss: true },
   skitter: { build: buildSkitter, hp: 24, r: .34, speed: 4.4, windup: .34, recover: .45, poise: false, turn: 11, ai: 'goblin', xp: 3, gold: 1, cost: .7, dmgMul: .8, blood: 0xff6a2a },
   imp:     { build: buildImp,     hp: 34, r: .34, speed: 3.0, windup: .75, recover: .3, poise: false, turn: 8, ai: 'archer', xp: 6, gold: 2, cost: 1.3, dmgMul: 1.15, blood: 0xb8402a },
@@ -3861,45 +4245,6 @@ function animateEnemy(e, dt, time) {
 
 /* ---------- rare encounters: the Reaper and the Gilded Hoarder ---------- */
 let FORCE_ENC = null;
-function buildReaper() {
-  const b = rigBase(0);
-  humanoid(b, { skin: 0xd9d2bd, top: 0x0d0d12, legs: 0x0d0d12, boots: 0x0d0d12, arm: 0x0d0d12, hand_c: 0xd9d2bd,
-    upper: [.3, .05, .04], fore: [.28, .04, .03], chest: [.22, .2, .16], shW: .24, slouch: .25 });
-  const robe = b.mt.top;
-  const skirt = b.add(new T.CylinderGeometry(.24, .58, 1.05, 22, 1, true), robe, 0, -.45, 0, b.hips); skirt.material.side = T.DoubleSide;
-  b.arms.forEach(a => b.add(new T.CylinderGeometry(.06, .13, .26, 14, 1, true), robe, 0, -.16, 0, a.el).material.side = T.DoubleSide);
-  blob(b, robe, [.175, .18, .19], [0, .14, -.035], b.head);
-  eyes(b, 0x6aff9a, .045, .13, .11, .026);
-  const hh = halo(0x6aff9a, .6, .5); hh.position.set(0, .13, .12); b.head.add(hh);
-  const w = joint(b.main.hand, 0, -.03, 0);
-  b.add(new T.CylinderGeometry(.03, .035, 2.1, 12), b.m(0x2a2420), 0, .3, 0, w);
-  const blade = b.add(new T.TorusGeometry(.5, .04, 6, 24, Math.PI * .7), b.m(0xb9c4cc, { metalness: .9, roughness: .2 }), .38, 1.32, 0, w);
-  blade.rotation.z = Math.PI * .2;
-  blade.add(halo(0x6aff9a, 1.2, .35));
-  b.weapon = w;
-  b.tele = flat(new T.CircleGeometry(2.3, 28, -Math.PI / 2 - 1.15, 2.3), decalMat(0xff3b2f, .3));
-  b.tele.visible = false; b.root.add(b.tele);
-  slamDecal(b, 3.6);
-  b.root.scale.setScalar(1.45);
-  return b;
-}
-function buildHoarder() {
-  const b = rigBase(0);
-  humanoid(b, { skin: 0xd8a838, top: 0x6a3a8a, legs: 0x3a2a1c, boots: 0x2a1e14, arm: 0xd8a838,
-    thigh: [.19, .055, .042], shin: [.19, .045, .032], upper: [.17, .04, .032], fore: [.16, .034, .028], chest: [.17, .15, .13], belly: [.16, .14, .13],
-    pelvis: [.14, .08, .1], neck: .04, head: .12, headS: [1.15, 1, 1.1], shW: .17, hipW: .08, hand: .04, foot: [.045, .032, .085], slouch: .35 });
-  b.mt.skin.metalness = .6; b.mt.skin.roughness = .3;
-  [-1, 1].forEach(s => { const e = b.add(new T.ConeGeometry(.045, .2, 10), b.mt.skin, s * .15, .13, -.01, b.head); e.rotation.z = s * -1.2; });
-  eyes(b, 0xffffff, .05, .13, .115, .02);
-  for (let i = 0; i < 5; i++) { const a = i / 5 * TAU; b.add(new T.ConeGeometry(.025, .09, 8), b.m(0xffd23f, { metalness: .8, roughness: .25 }), Math.cos(a) * .08, .25, Math.sin(a) * .08, b.head); }
-  const sack = blob(b, b.m(0x7a5a32), [.27, .29, .25], [0, .18, -.27], b.chest);
-  const coin = b.m(0xffd23f, { metalness: .85, roughness: .25, emissive: 0x3a2600 });
-  for (let i = 0; i < 6; i++) { const c = b.add(new T.CylinderGeometry(.05, .05, .015, 12), coin, rand(-.12, .12), .44 + rand(0, .06), -.27 + rand(-.1, .1), b.chest); c.rotation.set(rand(-1, 1), 0, rand(-1, 1)); }
-  sack.add(halo(0xffd23f, 3, .25));
-  b.weapon = b.main.hand;
-  b.root.scale.setScalar(1.1);
-  return b;
-}
 function reaperBlink(e) {
   burst(e.pos.clone().setY(1), 0x6aff9a, 18, 4, 3); ringFx(e.pos, 0x0d0d12, .3, 1.8, .3, .8);
   const p = P.pos.clone().addScaledVector(dirOf(P.facing), -2.3);

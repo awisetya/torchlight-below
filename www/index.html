@@ -400,7 +400,7 @@ scene.add(heroLight);
 
 const M = (color, o = {}) => new T.MeshStandardMaterial(Object.assign({ color, roughness: .72, metalness: .05 }, o));
 /* ---------- Ink & Wash: hatched ink over watercolor ---------- */
-const INKU = { camR: { value: new T.Vector3(1, 0, 0) }, camU: { value: new T.Vector3(0, 1, 0) }, ink: { value: new T.Color(0x352b29) } };
+const INKU = { camR: { value: new T.Vector3(1, 0, 0) }, camU: { value: new T.Vector3(0, 1, 0) }, ink: { value: new T.Color(0x2a1f1a).convertSRGBToLinear() } };
 const INK_GLSL = `
 uniform vec3 hCamR; uniform vec3 hCamU; uniform vec3 hInk; varying vec3 vWPos;
 float iwH(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -442,8 +442,8 @@ function inkWash(mat) {
   return mat;
 }
 /* brown ink outlines around characters */
-const INK_EDGE = new T.MeshBasicMaterial({ color: 0x2a201c, side: T.BackSide, fog: false });
-INK_EDGE.onBeforeCompile = sh => { sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n vec4 iwN4 = projectionMatrix * modelViewMatrix * vec4(normal, 0.0); gl_Position.xy += normalize(iwN4.xy + 1e-5) * 0.011 * gl_Position.w;'); };
+const INK_EDGE = new T.MeshBasicMaterial({ color: new T.Color(0x1e1612).convertSRGBToLinear(), side: T.BackSide, fog: false, toneMapped: false });
+INK_EDGE.onBeforeCompile = sh => { sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n vec4 iwN4 = projectionMatrix * modelViewMatrix * vec4(normal, 0.0); gl_Position.xy += normalize(iwN4.xy + 1e-5) * 0.0065 * gl_Position.w;'); };
 function inkify(root) { root.traverse(o => { if (o.isMesh && !o.isInstancedMesh && !o.userData.inked && !o.userData.isEdge && o.material && o.material.isMeshStandardMaterial && o.geometry && o.geometry.attributes.normal) { o.userData.inked = 1; const h = new T.Mesh(o.geometry, INK_EDGE); h.userData.isEdge = 1; h.castShadow = false; h.raycast = () => {}; o.add(h); } }); }
 const basic = (color, o = {}) => new T.MeshBasicMaterial(Object.assign({ color }, o));
 

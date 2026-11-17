@@ -1036,7 +1036,7 @@ const TROVE_T = 30;
 function genFloor(n) {
   applyTheme();
   rooms = {}; floorMod = null; relicRooms = 0;
-  const target = 7;
+  const target = n === 1 ? 7 : 11;
   const mk = (gx, gz) => (rooms[rk(gx, gz)] = { gx, gz, type: 'combat', doors: [], visited: false, cleared: false });
   mk(0, 0);
   let guard = 0;
@@ -5101,7 +5101,7 @@ function renderSheet() {
     ['Level', P.lv], ['Torch oil', `${Math.round(P.oil)}%`], ['Stage', `${runStage} of 5`], ['Gold', P.gold]];
   const path = P.line.map(id => `<figure class="on"><img src="${PORTRAIT[id]}" alt=""><figcaption>${KL[id].name}</figcaption></figure>`).join('<i>›</i>')
     + (kids.length ? `<i>›</i><span class="sh-next">${kids.map(c => `<figure><img src="${PORTRAIT[c]}" alt=""><figcaption>${KL[c].name}</figcaption></figure>`).join('')}</span>` : '');
-  let h = `<img class="sh-pt" src="${PORTRAIT[P.klass]}" alt=""><div class="sh-path">${path}</div><div class="sh-head" style="--c:${k.color}"><b>${k.name}</b><small>${['Base class', 'Specialised', 'Final class'][k.tier]} · ${P.line.map(id => KL[id].name).join(' › ')}</small>`;
+  let h = `<img class="sh-pt" src="${PORTRAIT[P.klass]}" alt=""><div class="sh-head" style="--c:${k.color}"><b>${k.name}</b><small>${['Base class', 'Specialised', 'Final class'][k.tier]} · ${P.line.map(id => KL[id].name).join(' › ')}</small>`;
   h += k.tier ? `<p><em>${k.sig}.</em> ${k.sigD}</p><p><em>${k.pas}.</em> ${k.pasD}</p>` : `<p>${k.desc}</p>`;
   h += `</div><div class="sh-stats">${st.map(([a, v]) => `<div><small>${a}</small><b>${v}</b></div>`).join('')}</div>`;
   if (kids.length) {

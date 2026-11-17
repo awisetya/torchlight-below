@@ -205,7 +205,7 @@ body.is-touch .tch{display:block}
 @media (max-height:440px){.cls .pt{aspect-ratio:2/1;margin-bottom:5px}}
 @media (max-width:560px){.cls .pt{aspect-ratio:3/1}}
 @media (max-height:440px){.card{padding:14px 16px}.card h1{font-size:34px}.cls b{font-size:22px}.cls span{font-size:13px}.go{margin-top:12px;min-height:46px}}
-.oil,#goldT{display:none!important}
+#goldT{display:none!important}
 .relic .aff{display:inline-block;font-style:normal;font-size:11px;padding:1px 6px;border-radius:8px;color:#111;margin-left:6px}
 #talents{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-height:44vh;overflow:auto;text-align:left}
 .cx-tree{display:flex;flex-direction:column;gap:8px}
@@ -217,6 +217,18 @@ body.is-touch .tch{display:block}
 .cx-ach{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}.cx-ach h3{grid-column:1/-1;margin:6px 0 0}
 .cx-ach div{border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:6px 8px;opacity:.5}.cx-ach div.got{opacity:1;border-color:#e8a33d}.cx-ach b{display:block;font-size:13px}.cx-ach span{font-size:11px}
 @media (max-width:720px){#talents{grid-template-columns:1fr}}
+#pause .card{max-width:900px}
+#sheet{text-align:left;display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:6px 0 10px}
+.sh-col{max-height:56vh;overflow:auto;padding-right:4px}.sh-col>h3:first-child{margin-top:0}
+@media (max-width:720px){#sheet{grid-template-columns:1fr}.sh-col{max-height:none}}
+#sheet h3{font-size:13px;letter-spacing:.08em;text-transform:uppercase;opacity:.7;margin:12px 0 6px}
+.sh-head{border-left:4px solid var(--c);padding:4px 0 4px 10px}.sh-head b{font-size:22px;color:var(--ink);text-shadow:0 0 1px var(--c)}.sh-head small{display:block;opacity:.7;font-size:12px}.sh-head p{margin:5px 0 0;font-size:13px;line-height:1.35}.sh-head em{font-style:normal;font-weight:700}
+.sh-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}.sh-stats div{background:rgba(0,0,0,.06);border-radius:8px;padding:5px 8px}.sh-stats small{display:block;font-size:11px;opacity:.7}.sh-stats b{font-size:15px}
+.sh-bar{display:grid;grid-template-columns:100px 1fr 44px;align-items:center;gap:8px;margin:4px 0;font-size:13px}.sh-bar i{height:8px;border-radius:4px;background:rgba(0,0,0,.12);overflow:hidden}.sh-bar u{display:block;height:100%;background:var(--c)}.sh-bar b{text-align:right}
+.sh-chips{display:flex;flex-wrap:wrap;gap:5px}.sh-chips span{border:1px solid var(--c);border-left-width:4px;border-radius:6px;padding:2px 7px;font-size:12px}
+.sh-row{margin:4px 0;font-size:12px;line-height:1.35}.sh-row b{display:block;font-size:13px}.sh-note{font-size:12px;opacity:.75;margin:2px 0}
+.row{flex-wrap:wrap}
+@media (max-width:560px){.sh-stats{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
@@ -291,8 +303,8 @@ body.is-touch .tch{display:block}
 <div class="screen" id="pause">
   <div class="card">
     <h2>Paused</h2>
-    <p id="pauseS"></p>
-    <p class="sub" id="pauseItems"></p>
+    <p id="pauseS" hidden></p>
+    <div id="sheet"></div><p class="sub" id="pauseItems" hidden></p>
     <div class="vol">
       <label>Music <input type="range" id="volM" min="0" max="100" aria-label="Music volume"></label>
       <label>Sound <input type="range" id="volS" min="0" max="100" aria-label="Sound effects volume"></label>
@@ -311,7 +323,8 @@ body.is-touch .tch{display:block}
     <p class="sub" id="overB"></p>
     <p class="embl" id="overE"></p>
     <div class="row">
-      <button class="go" id="againBtn">Fight again</button>
+      <button class="go" id="againBtn">Same class</button>
+      <button class="go alt" id="classBtn">Change class</button>
       <button class="go alt" id="heroBtn">Class Codex</button>
     </div>
   </div>
@@ -325,7 +338,7 @@ body.is-touch .tch{display:block}
     <p class="sub">Your class is recorded in the Codex. Try another path next time.</p>
     <div class="row">
       <button class="go alt" id="winCamp">Class Codex</button>
-      <button class="go" id="winGo">New run</button>
+      <button class="go" id="winGo">Choose class</button>
     </div>
   </div>
 </div>
@@ -443,7 +456,7 @@ function inkWash(mat) {
 }
 /* brown ink outlines around characters */
 const INK_EDGE = new T.MeshBasicMaterial({ color: new T.Color(0x1e1612).convertSRGBToLinear(), side: T.BackSide, fog: false, toneMapped: false });
-INK_EDGE.onBeforeCompile = sh => { sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n vec4 iwN4 = projectionMatrix * modelViewMatrix * vec4(normal, 0.0); gl_Position.xy += normalize(iwN4.xy + 1e-5) * 0.0065 * gl_Position.w;'); };
+INK_EDGE.onBeforeCompile = sh => { sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n vec4 iwN4 = projectionMatrix * modelViewMatrix * vec4(normal, 0.0); gl_Position.xy += normalize(iwN4.xy + 1e-5) * 0.0042 * gl_Position.w;'); };
 function inkify(root) { root.traverse(o => { if (o.isMesh && !o.isInstancedMesh && !o.userData.inked && !o.userData.isEdge && o.material && o.material.isMeshStandardMaterial && o.geometry && o.geometry.attributes.normal) { o.userData.inked = 1; const h = new T.Mesh(o.geometry, INK_EDGE); h.userData.isEdge = 1; h.castShadow = false; h.raycast = () => {}; o.add(h); } }); }
 const basic = (color, o = {}) => new T.MeshBasicMaterial(Object.assign({ color }, o));
 
@@ -865,7 +878,7 @@ function grantReward(kind, elite) {
   if (kind === 'upgrade') { choiceQ.push(() => offerUpgrades(elite ? 'An elite’s reward' : 'Your reward')); if (elite) choiceQ.push(() => offerUpgrades('An elite’s reward')); }
   else if (kind === 'item') { choiceQ.push(() => offerItems(elite ? 'An elite’s cache' : 'A cache of gear')); if (elite) choiceQ.push(() => offerItems('An elite’s cache')); }
   else if (kind === 'relic') choiceQ.push(() => offerRelics('A relic in the dark'));
-  else if (kind === 'heal') { const h = Math.round(Math.min(P.max * (elite ? .5 : .35), P.max - P.hp)); P.hp += h; pop(P.pos, h > 0 ? `+${h} health` : 'Full health', 'info'); sfx('heal'); }
+  else if (kind === 'heal') { const h = Math.round(Math.min(P.max * (elite ? .5 : .35), P.max - P.hp)); P.hp += h; P.oil = Math.min(100, P.oil + 25); pop(P.pos, (h > 0 ? `+${h} health, ` : '') + '+25 oil', 'info'); sfx('heal'); }
 }
 function offerChaos() {
   const cs = Object.keys(CURSES).sort(() => Math.random() - .5), bs = Object.keys(BLESSINGS).filter(k => !BLESSINGS[k].can || BLESSINGS[k].can()).sort(() => Math.random() - .5);
@@ -2423,10 +2436,11 @@ function updateGuardian(e, dt, toP, dist, angP) {
 const coinGeo = new T.CylinderGeometry(.1, .1, .035, 20);
 const coinMat = M(0xffc83d, { metalness: .8, roughness: .3, emissive: 0x3a2600 });
 const flaskGeo = new T.CylinderGeometry(.09, .12, .26, 16);
-const flaskMat = basic(0xff5a5a, { fog: false });
+const flaskMat = basic(0xffb347, { fog: false }), healMat = basic(0xff5a5a, { fog: false });
 let loot = [], goldAcc = 0, goldAccT = 0;
 function dropLoot(e) {
-  if (Math.random() < (e.def.boss ? 0 : e.elite ? .25 : .05)) spawnLoot(e.pos, 'oil', 0);
+  if (Math.random() < (e.def.boss ? 0 : e.elite ? .25 : .05)) spawnLoot(e.pos, 'heal', 0);
+  if (e.def.boss) spawnLoot(e.pos, 'oil', 40); else if (Math.random() < .09) spawnLoot(e.pos, 'oil', 20);
   return;
   const base = e.def.gold || { goblin: 1, archer: 2, orc: 5, boss: 40 }[e.type] || 1;
   const gm = (1 + L3([0, .3, .45, .6], bl('coin'))) * (hasU('idol') ? 2 : 1) * (floorMod === 'gilded' ? 1.6 : 1) * (P.goldMul || 1) * (curseOn('greed') ? 0 : 1) * (e.elite ? 1.5 : 1);
@@ -2442,7 +2456,7 @@ function dropLoot(e) {
   if (e.def.boss) spawnLoot(e.pos, 'oil', 40);
 }
 function spawnLoot(pos, kind, val) {
-  const mesh = new T.Mesh(kind === 'gold' ? coinGeo : flaskGeo, kind === 'gold' ? coinMat : flaskMat);
+  const mesh = new T.Mesh(kind === 'gold' ? coinGeo : flaskGeo, kind === 'gold' ? coinMat : kind === 'heal' ? healMat : flaskMat);
   mesh.castShadow = true;
   const p = pos.clone().setY(.6);
   mesh.position.copy(p); scene.add(mesh);
@@ -2451,7 +2465,8 @@ function spawnLoot(pos, kind, val) {
 function collectLoot(l) {
   sfx('coin');
   if (l.kind === 'gold') { P.gold += l.val; goldAcc += l.val; goldAccT = .18; }
-  else { const h = Math.min(Math.round(P.max * .08), P.max - P.hp); if (h > 0) { P.hp += h; pop(P.pos, '+' + h, 'info'); } }
+  else if (l.kind === 'heal') { const h = Math.min(Math.round(P.max * .08), P.max - P.hp); if (h > 0) { P.hp += h; pop(P.pos, '+' + h, 'info'); } }
+  else { P.oil = Math.min(100, P.oil + l.val); pop(P.pos, `+${l.val} oil`, 'info'); }
 }
 function updateLoot(dt) {
   for (let i = loot.length - 1; i >= 0; i--) {
@@ -4498,7 +4513,7 @@ function updatePlayer(dt) {
   if (P.stDelay > 0) P.stDelay -= dt;
   else if (!P.blocking) P.st = Math.min(P.stMax, P.st + C.regen * P.regenMul * dt);
   // torch oil burns down while you explore
-  P.oil = 100; void (0 * Math.max(0, P.oil - dt * .4 * (1 - Math.min(.95, L3([0, .35, .5, .65], bl('wick')))) * (1 - hyper(.2, gc('lamp'))) * (floorMod === 'dark' ? 2 : 1) * (curseOn('smoke') ? 4 : 1)));
+  P.oil = hasU('lantern') ? 100 : Math.max(0, P.oil - dt * .3 * (1 - Math.min(.95, L3([0, .35, .5, .65], bl('wick')))) * (1 - hyper(.2, gc('lamp'))) * (floorMod === 'dark' ? 2 : 1) * (curseOn('smoke') ? 4 : 1));
   P.quickCd = Math.max(0, P.quickCd - dt);
   if (P.shieldT > 0) { P.shieldT -= dt; if (P.shieldT <= 0) P.shield = 0; }
   if (P.momT > 0) { P.momT -= dt; if (P.momT <= 0) P.mom = 0; }
@@ -5019,23 +5034,34 @@ function useEquip() {
 
 /* ---------- room flow ---------- */
 let paused = false;
+function renderSheet() {
+  const k = KL[P.klass], kids = branches(), need = EVO_NEED[k.tier] || 8, esc = t => String(t);
+  const crit = Math.min(60, Math.round(100 * (L3([0, .15, .22, .3], bl('crit')) + .1 * gc('lens') + (P.chaosCrit || 0))));
+  const st = [['Health', `${Math.ceil(P.hp)} / ${P.max}`], ['Damage', `${Math.round(P.dmgMul * 100)}%`], ['Speed', `${Math.round(P.speedMul * 100)}%`], ['Crit', `${crit}%`],
+    ['Level', P.lv], ['Torch oil', `${Math.round(P.oil)}%`], ['Stage', `${runStage} of 5`], ['Kills', kills]];
+  let h = `<div class="sh-head" style="--c:${k.color}"><b>${k.name}</b><small>${['Base class', 'Specialised', 'Final class'][k.tier]} · ${P.line.map(id => KL[id].name).join(' › ')}</small>`;
+  h += k.tier ? `<p><em>${k.sig}.</em> ${k.sigD}</p><p><em>${k.pas}.</em> ${k.pasD}</p>` : `<p>${k.desc}</p>`;
+  h += `</div><div class="sh-stats">${st.map(([a, v]) => `<div><small>${a}</small><b>${v}</b></div>`).join('')}</div>`;
+  if (kids.length) {
+    h += `<h3>Evolution</h3><p class="sh-note">Next evolution after the ${runStage <= 1 ? 'Warden (stage 1)' : 'Reaper (stage 3)'}. ${need} affinity opens a path.</p>`;
+    h += kids.map(c => { const v = P.aff[c] || 0; return `<div class="sh-bar" style="--c:${KL[c].color}"><span>${KL[c].name}</span><i><u style="width:${Math.min(100, v / need * 100)}%"></u></i><b>${v}/${need}</b></div>`; }).join('');
+  } else h += `<h3>Evolution</h3><p class="sh-note">Final class reached. Mastery upgrades now appear on level up.</p>`;
+  const ul = Object.entries(P.ups);
+  h += `<h3>Upgrades</h3>` + (ul.length ? `<div class="sh-chips">${ul.map(([id, lv]) => { const u = UPM[id], c = u.cap ? KL[u.cap].color : u.aff ? KL[u.aff].color : '#c9b8ff'; return `<span style="--c:${c}">${u.name} ${RN[lv]}</span>`; }).join('')}</div>` : '<p class="sh-note">None yet.</p>');
+  h += `<h3>Relics</h3>` + (P.relicIds.length ? P.relicIds.map(id => { const r = RELICS[id]; return `<div class="sh-row"><b>${r.name}</b><span>${r.d || fxDesc(r.fx, 1)}</span></div>`; }).join('') : '<p class="sh-note">None yet. Bosses and relic rooms offer them.</p>');
+  const gl = Object.entries(P.gear);
+  h += `<h3>Items</h3>` + (gl.length ? gl.map(([id, n]) => `<div class="sh-row"><b>${GEAR[id].name}${n > 1 ? ` x${n}` : ''}</b><span>${GEAR[id].desc}</span></div>`).join('') : '<p class="sh-note">None yet.</p>');
+  if (P.equip) h += `<div class="sh-row"><b>${EQUIP[P.equip].n}</b><span>${EQUIP[P.equip].d}</span></div>`;
+  const cut_ = h.indexOf('<h3>Upgrades</h3>');
+  $('sheet').innerHTML = `<div class="sh-col">${h.slice(0, cut_)}</div><div class="sh-col">${h.slice(cut_)}</div>`;
+}
 function setPaused(v) {
   if (v && (choosing || !playing || P.dead || $('over').classList.contains('on'))) return;
   paused = v;
   $('pause').classList.toggle('on', v);
   if (v) {
     stick.x = stick.y = 0; input.blockTouch = input.atkHeld = false; sBase.classList.remove('on'); stickId = null;
-    const k = KL[P.klass], kids = branches(), need = EVO_NEED[k.tier] || 8;
-    $('pauseS').textContent = `Stage ${runStage}, ${stageName()}. ${k.name}${k.tier ? `: ${k.sig}` : ''}. Level ${P.lv}. ${kills} ${kills === 1 ? 'kill' : 'kills'}.`;
-    const parts = [];
-    if (kids.length) parts.push(`Affinity: ${kids.map(c => `${KL[c].name} ${P.aff[c] || 0}/${need}`).join(', ')}. Evolution after the ${runStage <= 1 ? 'first' : 'third'} boss.`);
-    const ul = Object.entries(P.ups).map(([id, lv]) => `${UPM[id].name} ${RN[lv]}`);
-    parts.push(ul.length ? `Upgrades: ${ul.join(', ')}.` : 'No upgrades yet.');
-    if (P.relicIds.length) parts.push(`Relics: ${P.relicIds.map(id => RELICS[id].name).join(', ')}.`);
-    const gl = Object.entries(P.gear).map(([id, n]) => `${GEAR[id].name}${n > 1 ? ` x${n}` : ''}`);
-    if (gl.length) parts.push(`Items: ${gl.join(', ')}.`);
-    if (P.equip) parts.push(`Equipment: ${EQUIP[P.equip].n}.`);
-    $('pauseItems').textContent = parts.join(' ');
+    renderSheet();
     $('resumeBtn').focus();
   }
 }
@@ -5130,6 +5156,7 @@ function nextFloor() {
   genFloor(runStage);
   enterRoom(rk(0, 0), null);
   P.rerollsLeft = Math.max(P.rerollsLeft, 1);
+  P.oil = Math.min(100, P.oil + 40);
   banner(`Stage ${runStage}: ${stageName()}`, runStage === 5 ? 'The last of the dark' : `You descend as ${aan(KL[P.klass].name)}.`);
 }
 
@@ -5281,7 +5308,7 @@ function showWin() {
   $('winE').textContent = `Victories as ${KL[P.klass].name}: ${CODEX.wins[P.klass] || 1}. Classes discovered: ${Object.keys(CODEX.disc).length} of 21.`;
   $('win').classList.add('on'); sfx('level');
 }
-$('winGo').addEventListener('click', () => { winOpen = false; $('win').classList.remove('on'); overShown = false; startGame(); });
+$('winGo').addEventListener('click', toMenu);
 $('winCamp').addEventListener('click', () => {
   winOpen = false; $('win').classList.remove('on');
   playing = false; resetPlayer(); floor = 1; runStage = 1; genFloor(1); enterRoom(rk(0, 0), null); openCamp();
@@ -5302,6 +5329,8 @@ function showOver() {
 }
 $('startBtn').addEventListener('click', startGame);
 $('againBtn').addEventListener('click', () => { overShown = false; startGame(); });
+function toMenu() { overShown = false; winOpen = false; $('over').classList.remove('on'); $('win').classList.remove('on'); playing = false; resetPlayer(); floor = 1; runStage = 1; genFloor(1); enterRoom(rk(0, 0), null); updateHUD(); $('menu').classList.add('on'); }
+$('classBtn').addEventListener('click', toMenu);
 $('heroBtn').addEventListener('click', () => {
   overShown = false; playing = false; resetPlayer(); floor = 1; runStage = 1; genFloor(1); enterRoom(rk(0, 0), null);
   openCamp();

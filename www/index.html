@@ -205,7 +205,6 @@ body.is-touch .tch{display:block}
 @media (max-height:440px){.cls .pt{aspect-ratio:2/1;margin-bottom:5px}}
 @media (max-width:560px){.cls .pt{aspect-ratio:3/1}}
 @media (max-height:440px){.card{padding:14px 16px}.card h1{font-size:34px}.cls b{font-size:22px}.cls span{font-size:13px}.go{margin-top:12px;min-height:46px}}
-#goldT{display:none!important}
 .relic .aff{display:inline-block;font-style:normal;font-size:11px;padding:1px 6px;border-radius:8px;color:#111;margin-left:6px}
 #talents{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-height:44vh;overflow:auto;text-align:left}
 .cx-tree{display:flex;flex-direction:column;gap:8px}
@@ -845,7 +844,8 @@ const REWARDS = {
   upgrade: { name: 'Upgrade', c: '#ffd27a', w: 2.2 },
   item: { name: 'Item', c: '#9fe3ff', w: 1.3 },
   relic: { name: 'Relic', c: '#ffd23f', w: .35 },
-  heal: { name: 'Heal', c: '#ff7a6a', w: .9 }
+  heal: { name: 'Heal', c: '#ff7a6a', w: .9 },
+  gold: { name: 'Gold', c: '#ffc83d', w: 1.2 }
 };
 let relicRooms = 0;
 function rollReward() {
@@ -878,6 +878,7 @@ function grantReward(kind, elite) {
   if (kind === 'upgrade') { choiceQ.push(() => offerUpgrades(elite ? 'An elite’s reward' : 'Your reward')); if (elite) choiceQ.push(() => offerUpgrades('An elite’s reward')); }
   else if (kind === 'item') { choiceQ.push(() => offerItems(elite ? 'An elite’s cache' : 'A cache of gear')); if (elite) choiceQ.push(() => offerItems('An elite’s cache')); }
   else if (kind === 'relic') choiceQ.push(() => offerRelics('A relic in the dark'));
+  else if (kind === 'gold') { const g = Math.round(16 * (1 + (floor - 1) * .15) * (elite ? 1.6 : 1)); for (let i = 0; i < 8; i++) spawnLoot(new T.Vector3(0, 0, 0), 'gold', Math.ceil(g / 8)); }
   else if (kind === 'heal') { const h = Math.round(Math.min(P.max * (elite ? .5 : .35), P.max - P.hp)); P.hp += h; P.oil = Math.min(100, P.oil + 25); pop(P.pos, (h > 0 ? `+${h} health, ` : '') + '+25 oil', 'info'); sfx('heal'); }
 }
 function offerChaos() {
@@ -1040,12 +1041,15 @@ function genFloor(n) {
   exit.type = 'boss'; exit.boss = STAGE_BOSS[n - 1] || 'guardian';
   const ends = all.filter(r => r.doors.length === 1 && r !== start && r !== exit);
   if (ends.length) { const sh = ends.splice(Math.floor(Math.random() * ends.length), 1)[0]; sh.type = 'shrine'; sh.cleared = true; }
+  let shopR = ends.length ? ends.splice(Math.floor(Math.random() * ends.length), 1)[0] : all.find(r => r.type === 'combat');
+  if (shopR) { shopR.type = 'shop'; shopR.cleared = true; }
   const base = (n - 1) * 7, maxD = Math.max(1, dist[rk(exit.gx, exit.gz)]);
   const SIZES = [[9, 7], [8, 6], [7, 6], [9, 5], [7, 7], [8, 7]];
   for (const r of all) {
     r.dl = base + 1 + Math.round(5 * dist[rk(r.gx, r.gz)] / maxD);
     if (r.type === 'start') { r.size = [6, 5]; r.layout = 0; }
     else if (r.type === 'shrine') { r.size = [5, 5]; r.layout = 0; }
+    else if (r.type === 'shop') { r.size = [8, 5]; r.layout = 0; r.stockFor = true; }
     else if (r.type === 'boss') { r.size = [10, 8]; r.layout = 1; r.dl = base + 7; }
     else {
       r.size = SIZES[Math.floor(Math.random() * SIZES.length)]; r.layout = Math.floor(Math.random() * 4);
@@ -2440,8 +2444,6 @@ const flaskMat = basic(0xffb347, { fog: false }), healMat = basic(0xff5a5a, { fo
 let loot = [], goldAcc = 0, goldAccT = 0;
 function dropLoot(e) {
   if (Math.random() < (e.def.boss ? 0 : e.elite ? .25 : .05)) spawnLoot(e.pos, 'heal', 0);
-  if (e.def.boss) spawnLoot(e.pos, 'oil', 40); else if (Math.random() < .09) spawnLoot(e.pos, 'oil', 20);
-  return;
   const base = e.def.gold || { goblin: 1, archer: 2, orc: 5, boss: 40 }[e.type] || 1;
   const gm = (1 + L3([0, .3, .45, .6], bl('coin'))) * (hasU('idol') ? 2 : 1) * (floorMod === 'gilded' ? 1.6 : 1) * (P.goldMul || 1) * (curseOn('greed') ? 0 : 1) * (e.elite ? 1.5 : 1);
   let total = Math.round(base * (1 + (floor - 1) * .2) * rand(.8, 1.4) * gm);
@@ -2452,7 +2454,7 @@ function dropLoot(e) {
     total -= val;
     spawnLoot(e.pos, 'gold', val);
   }
-  if (!e.def.boss && Math.random() < .07) spawnLoot(e.pos, 'oil', 20);
+  if (!e.def.boss && Math.random() < .09) spawnLoot(e.pos, 'oil', 20);
   if (e.def.boss) spawnLoot(e.pos, 'oil', 40);
 }
 function spawnLoot(pos, kind, val) {
@@ -2492,9 +2494,8 @@ function updateLoot(dt) {
 const ITEMS = {
   oil:   { price: 14, color: 0xffb347, bottle: true, name: () => 'Torch oil', desc: () => 'Refills 50 oil for your torch.', buy: () => { P.oil = Math.min(100, P.oil + 50); } },
   heal:  { price: 18, color: 0xd0533f, bottle: true, name: () => 'Healing draught', desc: () => 'Restores 40% of your health.', buy: () => { const h = Math.round(Math.min(P.max * .4, P.max - P.hp)); P.hp += h; } },
-  pom:   { price: 30, color: 0xc9b8ff, name: () => 'Pom of power', desc: () => P.boons.some(b => b.lv < MAXLV) ? 'Raise one of your boons by a level.' : 'You have no boons to empower yet.', can: () => P.boons.some(b => b.lv < MAXLV),
-    buy: () => openChoice('Pom of power', 'Choose a boon to empower.', boonOffer(3, true)) },
-  boon:  { price: 45, color: 0xffd23f, name: () => 'Sealed boon', desc: () => 'Choose one of three boons.', buy: () => offerBoons('A sealed boon') }
+  pom:   { price: 45, color: 0xffd27a, name: () => 'Training manual', desc: () => 'Choose one of three upgrades for your class path.', buy: () => offerUpgrades('Training manual') },
+  boon:  { price: 40, color: 0x9fe3ff, name: () => 'Mystery cache', desc: () => 'Choose one of two items.', buy: () => offerItems('Mystery cache') }
 };
 const GEAR = {
   whet:    { name: 'Whetstone', color: 0xdfe6f0, price: 30, desc: '+10% damage per stack.', on: () => { P.dmgMul += .1; } },
@@ -2530,9 +2531,6 @@ for (const [id, g] of Object.entries(GEAR)) {
     buy: () => { P.gear[id] = gc(id) + 1; if (g.on) g.on(); } };
 }
 const spCdMul = () => Math.pow(.65, gc('clock')) * (hasU('hourglass') ? .6 : 1) * (1 - hyper(.15, gc('cell'))) * (1 - Math.min(.75, L3([0, .15, .25, .35], bl('haste'))));
-function rollStock() {
-  return Object.keys(ITEMS).sort(() => Math.random() - .5).slice(0, 3).map(id => ({ id, price: Math.round(ITEMS[id].price * 1.4 * (1 + (floor - 1) * .2)), sold: false }));
-}
 const restockPrice = room => 12 + 8 * (room.rerolls || 0);
 
 function itemIcon(id) {
@@ -2573,7 +2571,8 @@ function buildShop(room) {
 
   $('tags').innerHTML = '';
   shopSlots = [];
-  const xs = [-2.6, 0, 2.6];
+  if (!room.stock) room.stock = rollStock();
+  const xs = [-3.4, -1.7, 0, 1.7, 3.4];
   const slots = room.stock.map((st, i) => ({ st, x: xs[i], z: .6 }));
   slots.push({ st: { id: 'restock' }, x: AX - 1.3, z: -AZ + 1.5 });
   if (!room.printGear) room.printGear = randGear();
@@ -2656,6 +2655,7 @@ function tryBuy() {
   }
   const it = ITEMS[sl.st.id];
   it.buy();
+  if (sl.st.id.startsWith('g_')) gearAff(sl.st.id.slice(2));
   sl.st.sold = true; sl.icon.visible = false;
   pop(P.pos, it.label ? it.label() : it.name(), 'info');
   shopTarget = null;
@@ -3411,12 +3411,30 @@ function takeRelic(id) {
   burst(P.pos.clone().setY(1), 0xffd23f, 30, 5, 5); ringFx(P.pos, 0xffd23f, .4, 3.2, .5, .8); pop(P.pos, r.name, 'parry');
 }
 function offerRelics(title) { return openChoice(title, 'Relics are powerful and last the whole run. They count double toward your evolution.', relicOffer(), { title, sub: '', reroll: relicOffer }); }
-function grantGear(id) {
-  ITEMS['g_' + id].buy();
+function gearAff(id) {
   const a = ITEM_AFF[id] || [];
   P.itemAff[id] = P.itemAff[id] || 0;
   if (P.itemAff[id] < 2) { P.itemAff[id]++; a.forEach(k => addAff(k, 1)); }
+}
+function grantGear(id) {
+  ITEMS['g_' + id].buy(); gearAff(id);
   pop(P.pos, GEAR[id].name, 'info'); sfx('buy');
+}
+// relics can be bought at the merchant
+for (const [id, r] of Object.entries(RELICS)) ITEMS['r_' + id] = { price: 85, relic: true, color: parseInt((r.aff ? KL[r.aff].color : '#ffd23f').slice(1), 16),
+  name: () => `${r.name}, relic${r.aff ? ` (+2 ${KL[r.aff].name})` : ''}`, label: () => r.name, desc: () => r.d || fxDesc(r.fx, 1), can: () => !P.relicIds.includes(id), buy: () => takeRelic(id) };
+function rollStock() {
+  const pick = a => a[Math.floor(Math.random() * a.length)];
+  const pool = Object.keys(RELICS).filter(id => !P.relicIds.includes(id) && (!RELICS[id].lock || CODEX.disc[RELICS[id].lock]) && (!RELICS[id].aff || KL[RELICS[id].aff].kit === P.cls));
+  const want = new Set(branches().concat(P.line)), pref = pool.filter(id => want.has(RELICS[id].aff));
+  const ids = [];
+  const r = pick(pref.length ? pref : pool); if (r) ids.push('r_' + r);
+  ids.push('g_' + pick(['boots', 'battery']));
+  for (let k = 0; k < 20; k++) { const g = 'g_' + randGear(); if (!ids.includes(g)) { ids.push(g); break; } }
+  const eq = Object.keys(EQUIP).filter(x => x !== P.equip);
+  ids.push(Math.random() < .55 && eq.length ? 'e_' + pick(eq) : 'pom');
+  ids.push(pick(['heal', 'oil', 'boon']));
+  return ids.map(id => ({ id, price: Math.round(ITEMS[id].price * (1 + (floor - 1) * .12)), sold: false }));
 }
 function itemOffer() {
   const ids = []; while (ids.length < 2) { const id = randGear(); if (!ids.includes(id)) ids.push(id); }
@@ -3656,13 +3674,13 @@ const ATK = [
 ];
 const ROLL_T = .36;
 const CLASSES = {
-  knight: { name: 'Fighter', build: buildHero, hp: 100, speed: 5, regen: 40, mobCost: 24, skillCd: 6, res: '#6fb0c9', btn: ['Attack', 'Roll', 'Slam'],
+  knight: { name: 'Fighter', build: buildHero, hp: 100, speed: 5.4, regen: 46, mobCost: 24, skillCd: 6, res: '#6fb0c9', btn: ['Attack', 'Roll', 'Slam'],
     tch: 'Drag on the left to move. Hold Attack to chain a combo that ends in a spin. Roll through attacks. Slam leaps forward and crushes every enemy around you, staggering them.',
     kbd: 'WASD to move. J or left click to attack, keep pressing to combo. Space to roll. Shift or right click to slam the ground and stagger everything nearby.' },
-  hunter: { name: 'Archer', build: buildHunter, hp: 85, speed: 5.5, regen: 34, mobCost: 18, skillCd: 6, res: '#a8c96f', btn: ['Shoot', 'Roll', 'Rain'],
+  hunter: { name: 'Archer', build: buildHunter, hp: 85, speed: 5.8, regen: 40, mobCost: 18, skillCd: 6, res: '#a8c96f', btn: ['Shoot', 'Roll', 'Rain'],
     tch: 'Drag on the left to move. Tap Shoot for quick arrows, or hold it and release for a piercing shot. Rain drops a volley on the nearest crowd, pinning everything in it.',
     kbd: 'WASD to move. Tap J or left click to shoot, hold and release for a piercing shot. Space to roll. Shift or right click calls an arrow rain on the nearest crowd.' },
-  mage: { name: 'Mage', build: buildMage, hp: 75, speed: 4.8, regen: 24, mobCost: 22, skillCd: 5, res: '#9a86ff', btn: ['Bolt', 'Blink', 'Nova'],
+  mage: { name: 'Mage', build: buildMage, hp: 75, speed: 5.3, regen: 32, mobCost: 22, skillCd: 5, res: '#9a86ff', btn: ['Bolt', 'Blink', 'Nova'],
     tch: 'Drag on the left to move. Arcane bolts burst on impact, hold to keep casting. Blink teleports you out of danger. Nova staggers every enemy close to you. Elemental boons change what your magic does.',
     kbd: 'WASD to move. J or left click casts an arcane bolt, hold to keep casting. Space to blink. Shift or right click for a nova. Elemental boons change what your magic does.' }
 };
@@ -5038,7 +5056,7 @@ function renderSheet() {
   const k = KL[P.klass], kids = branches(), need = EVO_NEED[k.tier] || 8, esc = t => String(t);
   const crit = Math.min(60, Math.round(100 * (L3([0, .15, .22, .3], bl('crit')) + .1 * gc('lens') + (P.chaosCrit || 0))));
   const st = [['Health', `${Math.ceil(P.hp)} / ${P.max}`], ['Damage', `${Math.round(P.dmgMul * 100)}%`], ['Speed', `${Math.round(P.speedMul * 100)}%`], ['Crit', `${crit}%`],
-    ['Level', P.lv], ['Torch oil', `${Math.round(P.oil)}%`], ['Stage', `${runStage} of 5`], ['Kills', kills]];
+    ['Level', P.lv], ['Torch oil', `${Math.round(P.oil)}%`], ['Stage', `${runStage} of 5`], ['Gold', P.gold]];
   let h = `<div class="sh-head" style="--c:${k.color}"><b>${k.name}</b><small>${['Base class', 'Specialised', 'Final class'][k.tier]} · ${P.line.map(id => KL[id].name).join(' › ')}</small>`;
   h += k.tier ? `<p><em>${k.sig}.</em> ${k.sigD}</p><p><em>${k.pas}.</em> ${k.pasD}</p>` : `<p>${k.desc}</p>`;
   h += `</div><div class="sh-stats">${st.map(([a, v]) => `<div><small>${a}</small><b>${v}</b></div>`).join('')}</div>`;

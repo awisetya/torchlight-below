@@ -2588,8 +2588,8 @@ function buildShop(room) {
   $('tags').innerHTML = '';
   shopSlots = [];
   if (!room.stock) room.stock = rollStock();
-  const xs = [-3.4, -1.7, 0, 1.7, 3.4];
-  const slots = room.stock.map((st, i) => ({ st, x: xs[i], z: .6 }));
+  const xs = [[-3.4, .6], [-1.7, .6], [0, .6], [1.7, .6], [3.4, .6], [-1.3, 2.5], [1.3, 2.5]];
+  const slots = room.stock.map((st, i) => ({ st, x: xs[i][0], z: xs[i][1] }));
   slots.push({ st: { id: 'restock' }, x: AX - 1.3, z: -AZ + 1.5 });
   if (!room.printGear) room.printGear = randGear();
   slots.push({ st: { id: 'scrap' }, x: -AX + 1.3, z: -AZ + 1.5 });
@@ -2603,7 +2603,7 @@ function buildShop(room) {
   }
   roomGroup.add(g);
 }
-function slotName(st) { return st.id === 'restock' ? 'Restock' : st.id === 'scrap' ? 'Scrapper' : st.id === 'print' ? `Printer: ${GEAR[st.gear].name}` : ITEMS[st.id].name(); }
+function slotName(st) { return st.id === 'restock' ? 'Restock' : st.id === 'scrap' ? 'Scrapper' : st.id === 'print' ? `Printer: ${GEAR[st.gear].name}` : (st.legend ? 'Legendary: ' : '') + ITEMS[st.id].name(); }
 const scrappable = () => Object.keys(P.gear).filter(id => P.gear[id] > 0 && GEAR[id].tier !== 'lunar');
 function slotPrice(st) { return st.id === 'scrap' || st.id === 'print' ? 0 : Math.round((st.id === 'restock' ? restockPrice(cur) : st.price)); }
 let shopTarget = null;
@@ -2956,7 +2956,7 @@ function gainXp(n) {
   P.xp += n;
   while (P.xp >= xpNeed(P.lv)) {
     P.xp -= xpNeed(P.lv); P.lv++; P.pendingLv++; sfx('level');
-    pop(P.pos, 'Level up!', 'parry');
+    pop(P.pos, 'Level up! +6% damage', 'parry');
     ringFx(P.pos, 0xb69cff, .3, 2.2, .45, .8);
     burst(P.pos.clone().setY(1), 0xc9b8ff, 18, 3, 4);
   }
@@ -3135,7 +3135,7 @@ function updateBlasts(dt) {
     shake = Math.max(shake, .14);
     if (!b.spare) for (const e of enemies) {
       if (e.dead || e.state === 'spawn') continue;
-      if (Math.hypot(e.pos.x - b.pos.x, e.pos.z - b.pos.z) < b.r + e.r) hitEnemy(e, b.dmg, 4, false, b.pos, false);
+      if (Math.hypot(e.pos.x - b.pos.x, e.pos.z - b.pos.z) < b.r + e.r) { hitEnemy(e, b.dmg, K() === 'saboteur' ? 9 : 4, false, b.pos, false); sigBlastHit(e); }
     }
     if (b.hostile && !P.dead && Math.hypot(P.pos.x - b.pos.x, P.pos.z - b.pos.z) < b.r + P.r * .5) hurtPlayer(b.dmg, b.pos, null, false);
   }
@@ -3228,46 +3228,46 @@ const PORTRAIT = {
 // 3 base classes, 6 specialisations after the first boss, 12 final classes after the third
 const KL = {
   fighter:  { kit: 'knight', tier: 0, name: 'Fighter', kids: ['knight', 'warrior'], color: '#c9a77a', btn: 'Slam', desc: 'A sword, a roll and a ground slam. Defence makes a Knight, offence makes a Warrior.' },
-  archer:   { kit: 'hunter', tier: 0, name: 'Archer', kids: ['hunter', 'trapper'], color: '#a8c96f', btn: 'Rain', desc: 'Quick shots, charged shots and an arrow rain. Precision makes a Hunter, control makes a Trapper.' },
-  mage:     { kit: 'mage', tier: 0, name: 'Mage', kids: ['elementalist', 'summoner'], color: '#9a86ff', btn: 'Nova', desc: 'Bursting bolts, a blink and a nova. Raw elements make an Elementalist, bound spirits make a Summoner.' },
+  archer:   { kit: 'hunter', tier: 0, name: 'Archer', kids: ['hunter', 'trapper'], color: '#a8c96f', btn: 'Rain', desc: 'Quick shots, charged shots and an arrow rain. Roll just before a hit lands for a perfect dodge: time slows, stamina returns and your next shot crits. Precision makes a Hunter, control makes a Trapper.' },
+  mage:     { kit: 'mage', tier: 0, name: 'Mage', kids: ['elementalist', 'summoner'], color: '#9a86ff', btn: 'Nova', desc: 'Bursting bolts, a blink and a nova. A mana shield turns a quarter of the damage you take into mana spent, while your mana stays above 30%. Raw elements make an Elementalist, bound spirits make a Summoner.' },
 
   knight:   { kit: 'knight', tier: 1, parent: 'fighter', kids: ['guardian', 'paladin'], name: 'Knight', color: '#9fb4d0', hp: 15, fx: { stone: 1 }, btn: 'Bash',
     sig: 'Shield Bash', sigD: 'Your slam bashes everything nearby and raises a shield worth 20% of your health.', pas: 'Bulwark', pasD: 'Take 10% less damage.' },
   warrior:  { kit: 'knight', tier: 1, parent: 'fighter', kids: ['berserker', 'warlord'], name: 'Warrior', color: '#d0533f', hp: 10, fx: { frenzy: 1 }, hm: ['whirl'], btn: 'Cleave',
-    sig: 'Brutal Cleave', sigD: 'Your slam hits 50% harder and cuts down ordinary foes below 20% health. Your spin finisher reaches farther.', pas: 'Bloodlust', pasD: 'Kills grant stacking damage for a few seconds.' },
+    sig: 'Brutal Cleave', sigD: 'Your slam hits 50% harder and cuts down ordinary foes below 20% health. Your spin finisher reaches farther.', pas: 'Bloodlust', pasD: 'Kills grant stacking damage for a few seconds. Your hits heal 1% of your health, twice a second at most.' },
   hunter:   { kit: 'hunter', tier: 1, parent: 'archer', kids: ['sharpshooter', 'stalker'], name: 'Hunter', color: '#8fbf5a', hp: 10, fx: { crit: 1 }, btn: 'Volley',
-    sig: 'Piercing Shot', sigD: 'Charged shots hit 40% harder and your arrow rain falls 50% harder.', pas: 'Keen Eye', pasD: 'Attacks can critically hit.' },
+    sig: 'Piercing Shot', sigD: 'Charged shots hit 40% harder and your arrow rain falls 50% harder.', pas: 'Keen Eye', pasD: 'Attacks can critically hit. Your perfect dodge window is half again as wide.' },
   trapper:  { kit: 'hunter', tier: 1, parent: 'archer', kids: ['saboteur', 'warden'], name: 'Trapper', color: '#c9a060', hp: 15, fx: { chillb: 1 }, btn: 'Snare',
-    sig: 'Snare Shot', sigD: 'Your arrow rain pins twice as long and leaves a snare trap at its centre.', pas: 'Hamstring', pasD: 'Attacks chill enemies.' },
+    sig: 'Snare Shot', sigD: 'Your arrow rain pins twice as long and leaves a snare trap at its centre.', pas: 'Hamstring', pasD: 'Attacks chill enemies. Chilled or pinned enemies deal 30% less damage to you.' },
   elementalist: { kit: 'mage', tier: 1, parent: 'mage', kids: ['archmage', 'stormcaller'], name: 'Elementalist', color: '#ff8a4a', hp: 5, fx: { ember: 1, frost: 1, storm: 1 }, btn: 'Nova',
-    sig: 'Elemental Bolt', sigD: 'Bolts carry fire, frost and storm, and your nova unleashes every element you hold.', pas: 'Attunement', pasD: 'Start with Ember, Frostbite and Storm.' },
+    sig: 'Elemental Bolt', sigD: 'Bolts carry fire, frost and storm, and your nova unleashes every element you hold.', pas: 'Attunement', pasD: 'Start with Ember, Frostbite and Storm. Your mana shield absorbs 35% of damage.' },
   summoner: { kit: 'mage', tier: 1, parent: 'mage', kids: ['necromancer', 'beastcaller'], name: 'Summoner', color: '#5fd0c0', hp: 10, fx: { orbit: 1 }, btn: 'Spirits',
-    sig: 'Spirit Bolt', sigD: 'Bolt kills release a wisp that circles you. Your nova calls three spirit guardians and a spirit fox that fights beside you for 12 seconds.', pas: 'Spirit Ward', pasD: 'Dodging summons an orbiting spirit.' },
+    sig: 'Spirit Bolt', sigD: 'Bolt kills release a wisp that circles you. Your nova calls three spirit guardians and a spirit fox that fights beside you for 12 seconds.', pas: 'Spirit Ward', pasD: 'Dodging summons an orbiting spirit. Minions near you or your attacker can take a hit for you, and heal you when they fall.' },
 
   guardian: { kit: 'knight', tier: 2, parent: 'knight', name: 'Guardian', color: '#6f9ad8', hp: 30, fx: { stone: 1, thorns: 2 }, hm: ['quake'], btn: 'Fortress',
     sig: 'Fortress Slam', sigD: 'A wider slam that sends out aftershocks and raises a shield worth 35% of your health.', pas: 'Bastion', pasD: 'While shielded you take 25% less damage. Attackers take damage back.' },
   paladin:  { kit: 'knight', tier: 2, parent: 'knight', name: 'Paladin', color: '#f0d27a', hp: 25, fx: { afterglow: 2, leech: 1 }, btn: 'Judgment',
     sig: 'Judgment', sigD: 'Your slam calls holy light down on four foes and heals you for each one it strikes.', pas: 'Consecration', pasD: 'Attacks sometimes smite with holy light. Kills heal.' },
   berserker:{ kit: 'knight', tier: 2, parent: 'warrior', name: 'Berserker', color: '#e0402a', hp: 15, fx: { berserk: 2, bloodlet: 1 }, hm: ['crescent'], btn: 'Frenzy',
-    sig: 'Blood Frenzy', sigD: 'Your slam spends 8% of your health to hit more than twice as hard, then sends you into a 6 second frenzy of speed and lifesteal.', pas: 'Rage', pasD: 'The more health you are missing, the harder you hit.' },
+    sig: 'Blood Frenzy', sigD: 'Your slam spends 8% of your health to hit more than twice as hard, then sends you into a 6 second frenzy of speed and lifesteal.', pas: 'Rage', pasD: 'The more health you are missing, the harder you hit. Below 30% health, frenzy lifesteal doubles.' },
   warlord:  { kit: 'knight', tier: 2, parent: 'warrior', name: 'Warlord', color: '#c0303a', hp: 25, fx: { momentum: 2, sap: 1 }, btn: 'War Cry',
-    sig: 'War Cry', sigD: 'Your slam is a war cry: enemies in a wide area are weakened and stunned, and you fight 40% harder and faster for 6 seconds.', pas: 'Command', pasD: 'Hits build momentum and weaken enemies.' },
+    sig: 'War Cry', sigD: 'Your slam is a war cry: enemies in a wide area are weakened and stunned, and you fight 40% harder and faster and take 25% less damage for 6 seconds.', pas: 'Command', pasD: 'Hits build momentum and weaken enemies.' },
   sharpshooter: { kit: 'hunter', tier: 2, parent: 'hunter', name: 'Sharpshooter', color: '#6fb8d8', hp: 10, fx: { crit: 1, precision: 2 }, hm: ['volley'], btn: 'Deadeye',
-    sig: 'Execution Shot', sigD: 'Charged shots fire three arrows, always crit enemies under 40% health and execute ordinary foes under 15%. Your rain also fires a killing shot at the strongest enemy.', pas: 'Steady Hand', pasD: 'Critical hits deal far more damage.' },
+    sig: 'Execution Shot', sigD: 'Charged shots fire three arrows, always crit enemies under 40% health and execute ordinary foes under 15%. Your rain also fires a killing shot at the strongest enemy.', pas: 'Steady Hand', pasD: 'Critical hits deal far more damage. A perfect dodge fully draws your next shot.' },
   stalker:  { kit: 'hunter', tier: 2, parent: 'hunter', name: 'Stalker', color: '#7a6aa0', hp: 10, fx: { phantom: 2, ghost: 1 }, hm: ['twin'], btn: 'Shadows',
-    sig: 'Shadow Volley', sigD: 'Your rain marks everything it hits, making it take 35% more damage. Rolling cloaks you briefly and doubles your next shot.', pas: 'Ambush', pasD: 'Quick shots fire twin arrows.' },
+    sig: 'Shadow Volley', sigD: 'Your rain marks everything it hits, making it take 35% more damage. Rolling cloaks you briefly and doubles your next shot. Cloaking makes nearby foes lose you for a second.', pas: 'Ambush', pasD: 'Quick shots fire twin arrows.' },
   saboteur: { kit: 'hunter', tier: 2, parent: 'trapper', name: 'Saboteur', color: '#ff7a3a', hp: 15, fx: { flame: 2 }, btn: 'Bombard',
-    sig: 'Explosive Trap', sigD: 'Your rain drops three bombs, and your traps explode when they spring.', pas: 'Fuse', pasD: 'Every roll ends in an explosion.' },
+    sig: 'Explosive Trap', sigD: 'Your rain drops three bombs, and your traps explode when they spring.', pas: 'Fuse', pasD: 'Every roll ends in an explosion. Your explosions knock foes back and stagger them.' },
   warden:   { kit: 'hunter', tier: 2, parent: 'trapper', name: 'Warden', color: '#5aa860', hp: 30, fx: { regen: 2, thorns: 1 }, hm: ['barrage'], btn: 'Grove',
-    sig: 'Thorn Grove', sigD: 'Your rain grows a bramble grove for 6 seconds that roots and poisons enemies and heals you while you stand in it.', pas: 'Heartwood', pasD: 'You regenerate health and attackers take damage back.' },
+    sig: 'Thorn Grove', sigD: 'Your rain grows a bramble grove for 6 seconds that roots and poisons enemies and heals you while you stand in it. Inside a grove you take 20% less damage.', pas: 'Heartwood', pasD: 'You regenerate health and attackers take damage back.' },
   archmage: { kit: 'mage', tier: 2, parent: 'elementalist', name: 'Archmage', color: '#6a8aff', hp: 10, fx: { over: 2, surge: 1 }, hm: ['bigbang'], btn: 'Cataclysm',
-    sig: 'Arcane Cataclysm', sigD: 'Your nova covers half again the ground, hits twice as hard and strikes a second time. Bolts burst wider.', pas: 'Mana Font', pasD: 'Your nova restores mana.' },
+    sig: 'Arcane Cataclysm', sigD: 'Your nova covers half again the ground, hits twice as hard and strikes a second time. Bolts burst wider.', pas: 'Mana Font', pasD: 'Your nova restores mana. Your mana shield absorbs half of all damage.' },
   stormcaller: { kit: 'mage', tier: 2, parent: 'elementalist', name: 'Stormcaller', color: '#9fe8ff', hp: 10, fx: { storm: 2, thunder: 1 }, hm: ['blinknova'], btn: 'Tempest',
-    sig: 'Chain Lightning', sigD: 'Every bolt that lands arcs lightning, and your nova calls lightning down on five enemies.', pas: 'Static Field', pasD: 'Blinking releases a small nova and calls lightning.' },
+    sig: 'Chain Lightning', sigD: 'Every bolt that lands arcs lightning, and your nova calls lightning down on five enemies.', pas: 'Static Field', pasD: 'Blinking releases a small nova and calls lightning. Blink costs 30% less and keeps you untouchable longer.' },
   necromancer: { kit: 'mage', tier: 2, parent: 'summoner', name: 'Necromancer', color: '#8fe04a', hp: 15, fx: { leech: 2, plague: 1 }, btn: 'Harvest',
-    sig: 'Soul Harvest', sigD: 'Kills can raise skeletons that fight for you, and your nova raises two more.', pas: 'Grave Hunger', pasD: 'Kills heal you.' },
+    sig: 'Soul Harvest', sigD: 'Kills can raise skeletons that fight for you, and your nova raises two more.', pas: 'Grave Hunger', pasD: 'Kills heal you, half again as much. Skeletons guard you too.' },
   beastcaller: { kit: 'mage', tier: 2, parent: 'summoner', name: 'Beastcaller', color: '#c9a060', hp: 25, fx: { regen: 1, frenzy: 1 }, btn: 'Howl',
-    sig: 'Spirit Beasts', sigD: 'Two spirit wolves fight beside you in every room. Your nova howls, stunning enemies and calling a third wolf.', pas: 'Pack Bond', pasD: 'You regenerate health and kills grant stacking damage.' }
+    sig: 'Spirit Beasts', sigD: 'Two spirit wolves fight beside you in every room. Your nova howls, stunning enemies and calling a third wolf.', pas: 'Pack Bond', pasD: 'You regenerate health and kills grant stacking damage. Every wolf bite heals you.' }
 };
 const aan = n => (/^[AEIOU]/.test(n) ? 'an ' : 'a ') + n;
 const KIT_BASE = { knight: 'fighter', hunter: 'archer', mage: 'mage' };
@@ -3473,8 +3473,28 @@ function rollStock() {
   const eq = Object.keys(EQUIP).filter(x => x !== P.equip);
   ids.push(Math.random() < .55 && eq.length ? 'e_' + pick(eq) : 'pom');
   ids.push(pick(['heal', 'oil', 'boon']));
-  return ids.map(id => ({ id, price: Math.round(ITEMS[id].price * (1 + (floor - 1) * .12)), sold: false }));
+  ids.push('temper');
+  let leg = null;
+  if (runStage >= 3) { const lg = legendPool().filter(x => !ids.includes('r_' + x)); if (lg.length) ids.push(leg = 'r_' + pick(lg)); }
+  return ids.map(id => ({ id, legend: id === leg, sold: false,
+    price: Math.round(ITEMS[id].price * (1 + (floor - 1) * .12) * (id.startsWith('g_') ? 1 + .1 * gc(id.slice(2)) : 1) * (id === 'temper' ? 1 + .5 * (P.tempers || 0) : 1) * (id === leg ? 2.6 : 1)) }));
 }
+// legendary relics: the final-class relics, sold from stage 3 on
+function legendPool() {
+  const all = Object.keys(RELICS).filter(id => RELICS[id].lock && !P.relicIds.includes(id) && KL[RELICS[id].lock].kit === P.cls);
+  const want = new Set([P.klass].concat(branches(), ...branches().map(b => KL[b].kids || []))), pref = all.filter(id => want.has(RELICS[id].lock));
+  return pref.length ? pref : all;
+}
+// tempering: push an upgrade you own one level further, past its usual cap
+const TEMPER_MAX = 5;
+ITEMS.temper = { price: 70, color: 0xff9a4a, name: () => 'Tempering', label: () => 'Tempering',
+  desc: () => `Raise one of your upgrades by a level, up to ${RN[TEMPER_MAX]}. The price climbs each time.`,
+  can: () => Object.entries(P.ups).some(([id, lv]) => lv < TEMPER_MAX && !UPM[id].cap),
+  buy: () => {
+    P.tempers = (P.tempers || 0) + 1;
+    const own = Object.entries(P.ups).filter(([id, lv]) => lv < TEMPER_MAX && !UPM[id].cap).map(([id]) => UPM[id]);
+    openChoice('Tempering', 'Choose an upgrade to raise by one level.', own.map(u => Object.assign(upOpt(u), { tag: 'Tempering' })));
+  } };
 function itemOffer() {
   const ids = []; while (ids.length < 2) { const id = randGear(); if (!ids.includes(id)) ids.push(id); }
   return ids.map(id => { const g = GEAR[id], a = ITEM_AFF[id] || [];
@@ -3571,9 +3591,9 @@ function updateMinions(dt) {
     m.cd -= dt;
     if (tgt && d <= reach + .1 && m.cd <= 0) {
       m.cd = m.beast ? .75 : 1; m.facing = angTo(m.pos, tgt.pos);
-      const dmg = (m.kind === 'fox' ? 12 : m.beast ? 9 : 11) * (1 + (floor - 1) * .07);
+      const dmg = (m.kind === 'fox' ? 12 : m.beast ? 9 : 11) * 1.15;
       SOFT = true; hitEnemy(tgt, dmg, 2, false, m.pos, false); SOFT = false;
-      if (m.kind === 'wolf' && bl('regen') && P.hp < P.max) P.hp = Math.min(P.max, P.hp + 1);
+      if (m.kind === 'wolf' && (K() === 'beastcaller' || bl('regen')) && P.hp < P.max) P.hp = Math.min(P.max, P.hp + 1);
       burst(tgt.pos.clone().setY(.7), m.kind === 'fox' ? 0xffc870 : m.beast ? 0x9ff0e0 : 0x8fe04a, 6, 3, 2);
     }
     m.walk += dt * (moving ? 12 : 0);
@@ -3621,6 +3641,7 @@ function sigSlam(c, echo) {
     const h = Math.min(Math.round(P.max * .06 * n), P.max - P.hp); if (h > 0) { P.hp += h; pop(P.pos, '+' + h, 'info'); }
   }
   if (inLine('warrior')) near(3.2, e => { if (!e.def.boss && e.hp / e.max < .2) { pop(e.pos, 'Cleaved', 'crit'); hitEnemy(e, e.hp + 1, 6, true, c, false); } });
+  if (k === 'warlord') P.cryUntil = gameTime + 6;
   if (k === 'warlord') { ringFx(c, 0xff5a3a, .4, 5.5, .5, .8); near(5.5, e => { e.weakT = 5; e.weakAmt = .4; if (!e.dead) stunEnemy(e, e.def.boss ? .4 : 1, 'Cowed'); }); P.hornT = 6; pop(P.pos, 'War cry', 'parry'); sfx('roar'); }
 }
 function holyStrike(e, dmg) {
@@ -3633,7 +3654,7 @@ function sigRain(r) {
   if (r.echo) return;
   const k = K();
   if (inLine('trapper')) { const old = traps.length >= 3 ? traps.shift() : null; if (old) scene.remove(old.mesh); const mesh = makeTrapMesh(); mesh.position.set(r.c.x, .02, r.c.z); scene.add(mesh); traps.push({ mesh, pos: r.c.clone().setY(0), armT: .6, life: 22, armed: false }); }
-  if (k === 'saboteur') for (let i = 0; i < 3; i++) { const a = Math.random() * TAU, q = r.c.clone().add(new T.Vector3(Math.cos(a) * r.R * .55, 0, Math.sin(a) * r.R * .55)); later(.3 + i * .2, () => addBlast(q, false, 40 * (1 + (floor - 1) * .05), 1.8)); }
+  if (k === 'saboteur') for (let i = 0; i < 3; i++) { const a = Math.random() * TAU, q = r.c.clone().add(new T.Vector3(Math.cos(a) * r.R * .55, 0, Math.sin(a) * r.R * .55)); later(.3 + i * .2, () => addBlast(q, false, 46, 1.8)); }
   if (k === 'warden') addGrove(r.c);
   if (k === 'sharpshooter') {
     const t = enemies.filter(e => !e.dead && e.state !== 'spawn').sort((a, b) => b.hp - a.hp)[0];
@@ -3661,9 +3682,11 @@ function sigOnHit(e, atk, heavy, crit) {
   const k = K();
   if (k === 'paladin' && atk && Math.random() < .12 && !e.dead) holyStrike(e, 18);
   if (k === 'stormcaller' && atk && !heavy && Math.random() < .35 && !e.dead) lightning(e, 1);
-  if (k === 'berserker' && P.rageT > 0 && atk && P.hp < P.max) P.hp = Math.min(P.max, P.hp + 3);
+  if (k === 'berserker' && P.rageT > 0 && atk && P.hp < P.max) P.hp = Math.min(P.max, P.hp + (P.hp / P.max < .3 ? 6 : 3));
+  if (inLine('warrior') && atk && P.hp < P.max && gameTime - (P.warHealT || -9) >= .5) { P.warHealT = gameTime; P.hp = Math.min(P.max, P.hp + Math.max(1, Math.round(P.max * .01))); }
 }
 function sigCritBonus(e, atk, heavy) {
+  if (P.perfectCrit && atk) { P.perfectCrit = false; return 1; }
   if (K() === 'sharpshooter' && atk && heavy && e.hp / e.max < .4) return 1;
   return 0;
 }
@@ -3680,9 +3703,55 @@ function sigDmgMul(e, atk, heavy) {
   if (K() === 'sharpshooter' && atk && heavy && !e.def.boss && e.hp / e.max < .15) m *= 20;
   return m;
 }
-function sigTakeMul() { return K() === 'guardian' && P.shield > 0 ? .75 : 1; }
+function sigTakeMul() {
+  const k = K();
+  let m = k === 'guardian' && P.shield > 0 ? .75 : 1;
+  if (k === 'warlord' && gameTime < (P.cryUntil || 0)) m *= .75;
+  if (k === 'warden' && groves.some(g => Math.hypot(P.pos.x - g.c.x, P.pos.z - g.c.z) < g.R)) m *= .8;
+  return m;
+}
+// ----- defences for the lines without shields -----
+let slowT = 0;
+const lvMul = () => Math.pow(1.06, ((P && P.lv) || 1) - 1);
+function srcTakeMul(src) { return inLine('trapper') && src && !src.dead && (src.chillT > 0 || src.state === 'stun') ? .7 : 1; }
+function perfectDodge() {
+  if (P.cls !== 'hunter') return false;
+  const win = inLine('hunter') ? .3 : .2;
+  if (gameTime - (P.dodgeAt ?? -9) > win || gameTime - (P.perfectAt ?? -9) < 1) return false;
+  P.perfectAt = gameTime; slowT = .7; P.perfectCrit = true;
+  P.st = Math.min(P.stMax, P.st + 15);
+  if (K() === 'sharpshooter') P.fullDraw = true;
+  pop(P.pos, 'Perfect dodge', 'parry'); sfx('blink');
+  ringFx(P.pos, 0xffd23f, .3, 2.2, .35, .9); burst(P.pos.clone().setY(.9), 0xfff0b0, 16, 4, 3);
+  return true;
+}
+function manaShield(d) {
+  if (P.cls !== 'mage' || d <= 0) return d;
+  const frac = K() === 'archmage' ? .5 : inLine('elementalist') ? .35 : .25, spare = P.st - P.stMax * .3;
+  if (spare <= 0) return d;
+  const a = Math.min(Math.round(d * frac), Math.floor(spare));
+  if (a <= 0) return d;
+  P.st -= a; burst(P.pos.clone().setY(1), 0x9a86ff, 6, 3, 2);
+  return d - a;
+}
+function minionGuard(src) {
+  if (!inLine('summoner') || !minions.length || Math.random() > .5) return false;
+  const m = minions.find(m => m.pos.distanceTo(P.pos) < 2.6 || (src && m.pos.distanceTo(src.pos) < 2.6));
+  if (!m) return false;
+  m.guard = (m.guard ?? 3) - 1; P.hurtCd = .35;
+  pop(m.pos, 'Guarded', 'info'); burst(m.pos.clone().setY(.6), 0x9ff0e0, 10, 3, 2);
+  if (m.guard <= 0) {
+    scene.remove(m.md.root); minions.splice(minions.indexOf(m), 1);
+    const h = Math.min(Math.round(P.max * (K() === 'necromancer' ? .06 : .04)), P.max - P.hp);
+    if (h > 0) { P.hp += h; pop(P.pos, '+' + h, 'info'); }
+  }
+  return true;
+}
+function sigBlastHit(e) { if (K() === 'saboteur' && !e.dead && !e.def.boss) stunEnemy(e, .6, 'Staggered'); }
 function sigDodge(start) {
   const k = K();
+  if (start) P.dodgeAt = gameTime;
+  if (k === 'stalker' && !start && gameTime - (P.lostAt ?? -9) > 3) { P.lostAt = gameTime; enemies.forEach(e => { if (!e.dead && !e.def.boss && e.state !== 'spawn' && e.pos.distanceTo(P.pos) < 6) stunEnemy(e, 1, 'Lost you'); }); }
   if (k === 'stalker' && !start) { P.iframes = Math.max(P.iframes, .7); P.empower = true; P.stalkT = 1.2; burst(P.pos.clone().setY(.8), 0x2a2240, 16, 3, 2); }
   if (k === 'summoner' && start) spawnOrbs(1, 4, 1.15, 9, 0x9ff0e0);
   if (k === 'stormcaller' && !start) { const t = nearestEnemy(7); if (t) lightning(t, 1); }
@@ -3886,6 +3955,7 @@ function aimDir(from, range) {
 // hunter
 const quickArrowGeo = RBox(.05, .05, .65), powerArrowGeo = RBox(.09, .09, .95);
 function fireHunter(power) {
+  if (power) P.fullDraw = false;
   const cost = power ? 20 : 6;
   if (P.st < cost * .5) { flagStamina(); P.state = 'idle'; return; }
   sfx('bow', power);
@@ -3903,15 +3973,15 @@ function fireHunter(power) {
   }
   if (power) {
     const pc = eCol(0xffd23f);
-    shoot({ pos, dir, speed: 26, friendly: true, src: 'attack', dmg: 34, kb: 6, pierce: true, heavy: true, trail: pc,
+    shoot({ pos, dir, speed: 26, friendly: true, src: 'attack', dmg: 40, kb: 6, pierce: true, heavy: true, trail: pc,
       mesh: new T.Mesh(powerArrowGeo, basic(pc, { fog: false })) });
     if (hm('volley')) [-.2, .2].forEach(o => { const vc = eCol(0xffd23f); shoot({ pos: pos.clone(), dir: dirOf(Math.atan2(dir.x, dir.z) + o), speed: 26, friendly: true, src: 'attack', dmg: 24, kb: 4, pierce: true, heavy: true, trail: vc, mesh: new T.Mesh(powerArrowGeo, basic(vc, { fog: false })) }); });
     shake = Math.max(shake, .12); burst(pos, 0xffd23f, 8, 3, 1.5);
     P.state = 'shot'; P.t = .3;
   } else {
     const qc = eCol(0xf3e8cc);
-    shoot({ pos, dir, speed: 20, friendly: true, src: 'attack', dmg: 12, kb: 2, pierceN: L3([0, 1, 2, 3], bl('pierce')), trail: anyElem() ? qc : 0, mesh: new T.Mesh(quickArrowGeo, basic(qc, { fog: false })) });
-    if (hm('twin')) { const side = new T.Vector3(dir.z, 0, -dir.x).multiplyScalar(.28); shoot({ pos: pos.clone().add(side), dir, speed: 20, friendly: true, src: 'attack', dmg: 10, kb: 2, pierceN: L3([0, 1, 2, 3], bl('pierce')), trail: anyElem() ? qc : 0, mesh: new T.Mesh(quickArrowGeo, basic(qc, { fog: false })) }); }
+    shoot({ pos, dir, speed: 20, friendly: true, src: 'attack', dmg: 14, kb: 2, pierceN: L3([0, 1, 2, 3], bl('pierce')), trail: anyElem() ? qc : 0, mesh: new T.Mesh(quickArrowGeo, basic(qc, { fog: false })) });
+    if (hm('twin')) { const side = new T.Vector3(dir.z, 0, -dir.x).multiplyScalar(.28); shoot({ pos: pos.clone().add(side), dir, speed: 20, friendly: true, src: 'attack', dmg: 12, kb: 2, pierceN: L3([0, 1, 2, 3], bl('pierce')), trail: anyElem() ? qc : 0, mesh: new T.Mesh(quickArrowGeo, basic(qc, { fog: false })) }); }
     P.state = 'shot'; P.t = .18;
   }
 }
@@ -4021,7 +4091,7 @@ function updateTraps(dt) {
         if (!e.dead) stunEnemy(e, 2.4, 'Snared');
         burst(tr.pos.clone().setY(.3), 0xc9ced6, 12, 4, 3); shake = Math.max(shake, .12);
         onSkill(tr.pos);
-        if (K() === 'saboteur') addBlast(tr.pos, false, 50 * (1 + (floor - 1) * .05), 2.1);
+        if (K() === 'saboteur') addBlast(tr.pos, false, 58, 2.1);
         sprung = true; break;
       }
     }
@@ -4066,7 +4136,7 @@ function explode(pos, r, dmg, col = 0xb69cff) {
   fxLight.position.set(pos.x, 1.2, pos.z); fxFlash = 3.2;
 }
 function blink(mv) {
-  const cost = dodgeCost(CLASSES.mage.mobCost);
+  const cost = dodgeCost(CLASSES.mage.mobCost) * (K() === 'stormcaller' ? .7 : 1);
   P.bufRoll = 0;
   if (P.st < cost * .6) { flagStamina(); return; }
   const dir = mv.lengthSq() > .01 ? mv.clone().normalize() : dirOf(P.facing);
@@ -4077,7 +4147,7 @@ function blink(mv) {
   P.pos.addScaledVector(dir, 4.2); confine(P);
   dashHits(bp, P.pos);
   P.facing = Math.atan2(dir.x, dir.z);
-  P.iframes = .25; P.st = Math.max(0, P.st - cost); P.stDelay = .4; P.state = 'idle';
+  P.iframes = .25 + (K() === 'stormcaller' ? .2 : 0); P.st = Math.max(0, P.st - cost); P.stDelay = .4; P.state = 'idle';
   burst(P.pos.clone().setY(.8), 0xb69cff, 14, 3, 2); ringFx(P.pos, 0xb69cff, 1.2, .3, .25, .6);
   onDodgeEnd();
   if (hm('blinknova')) novaAt(.5, true);
@@ -4131,6 +4201,7 @@ function hitEnemy(e, dmg, kb, heavy, from, proc = true) {
   if (P.desp && P.hp / P.max < .35) mul *= 1 + P.desp;
   if (P.hornT > 0) mul *= 1.4;
   mul *= sigDmgMul(e, atk, heavy);
+  mul *= lvMul();
   const critC = (atk ? L3([0, .15, .22, .3], bl('crit')) : 0) + (proc ? .1 * gc('lens') + (P.chaosCrit || 0) : 0);
   const crit = !!sigCritBonus(e, atk, heavy) || Math.random() < Math.min(.6, critC);
   if (crit) mul *= 2 + L3([0, .5, .75, 1], bl('precision'));
@@ -4203,7 +4274,7 @@ function killEnemy(e) {
     if (!(cur && cur.type === 'boss')) choiceQ.push(() => offerRelics('Death’s bounty'));
     if (cur && cur.reaper) { cur.reaper = false; later(.8, () => { if (!cur.cleared) roomCleared(); }); }
   }
-  if (bl('leech') && P.hp < P.max && !P.dead) { const h = Math.min(L3([0, 3, 5, 7], bl('leech')), P.max - P.hp); P.hp += h; pop(P.pos, '+' + h, 'info'); }
+  if (bl('leech') && P.hp < P.max && !P.dead) { const h = Math.min(Math.round(L3([0, 3, 5, 7], bl('leech')) * (K() === 'necromancer' ? 1.5 : 1)), P.max - P.hp); P.hp += h; pop(P.pos, '+' + h, 'info'); }
   if (bl('frenzy')) { P.frenzy = Math.min(5, P.frenzy + 1); P.frenzyT = 4; }
   if (gc('hunger') && !P.dead) P.hp = Math.min(P.max, P.hp + 6 * gc('hunger'));
   if (gc('tooth') && !P.dead && P.hp < P.max) { const h = Math.min(2 * gc('tooth'), P.max - P.hp); P.hp += h; }
@@ -4234,12 +4305,14 @@ function hurtPlayer(dmg, srcPos, srcEnemy, heavy) {
   if (P.dead) return 'none';
   if (P.iframes <= 0 && P.hurtCd <= 0 && bl('evasion') && Math.random() < Math.min(.6, L3([0, .08, .12, .16], bl('evasion')))) { pop(P.pos, 'Evaded', 'info'); P.hurtCd = .3; return 'none'; }
   if (P.iframes <= 0 && P.hurtCd <= 0 && gc('charm') && Math.random() < hyper(.15, gc('charm'))) { pop(P.pos, 'Warded', 'info'); P.hurtCd = .3; return 'none'; }
-  dmg = Math.round(dmg * eLevelDmg() * (srcEnemy && srcEnemy.elite ? 1.35 : 1) * (srcEnemy && srcEnemy.weakT > 0 ? 1 - srcEnemy.weakAmt : 1) * (curseOn('pain') ? 1.6 : 1));
+  dmg = Math.round(dmg * eLevelDmg() * srcTakeMul(srcEnemy) * (srcEnemy && srcEnemy.elite ? 1.35 : 1) * (srcEnemy && srcEnemy.weakT > 0 ? 1 - srcEnemy.weakAmt : 1) * (curseOn('pain') ? 1.6 : 1));
   if (P.iframes > 0) {
+    if (perfectDodge()) return 'dodge';
     pop(P.pos, 'Dodged', 'info');
     return 'dodge';
   }
   if (P.hurtCd > 0) return 'none';
+  if (minionGuard(srcEnemy)) return 'none';
   if (bl('thorns') && srcEnemy && !srcEnemy.dead) hitEnemy(srcEnemy, L3([0, 10, 16, 22], bl('thorns')), 3, false, P.pos, false);
   const facingOk = Math.abs(angDiff(P.facing, angTo(P.pos, srcPos))) < 1.4;
   const away = P.pos.clone().sub(srcPos).setY(0).normalize();
@@ -4272,6 +4345,8 @@ function hurtPlayer(dmg, srcPos, srcEnemy, heavy) {
 function damagePlayer(d, chip) {
   d = Math.max(1, Math.round(d * sigTakeMul() * (1 - Math.min(.6, L3([0, .1, .15, .2], bl('stone')))) * (1 - (P.armor || 0)) * (floorMod === 'brittle' ? 1.3 : 1)));
   if (P.shield > 0) { const a = Math.min(P.shield, d); P.shield -= a; d -= a; if (d <= 0) { pop(P.pos, 'Absorbed', 'info'); P.hurtCd = chip ? .1 : .35; return; } }
+  d = manaShield(d);
+  if (d <= 0) { pop(P.pos, 'Absorbed', 'info'); P.hurtCd = chip ? .1 : .35; return; }
   P.hp -= d; P.flash = .15; P.hurtCd = chip ? .1 : .35;
   if (!chip) sfx('hurt');
   pop(P.pos, d, 'hurt');
@@ -4632,7 +4707,7 @@ function updatePlayer(dt) {
     if (tgt) P.facing = turnToward(P.facing, angTo(P.pos, tgt.pos), 16 * dt);
     else if (mv.lengthSq() > .02) P.facing = turnToward(P.facing, Math.atan2(mv.x, mv.z), 10 * dt);
     if (P.bufRoll) startRoll(mv);
-    else if (!atkHeld()) fireHunter(P.t >= .55);
+    else if (!atkHeld()) fireHunter(P.t >= .55 || !!P.fullDraw);
   } else if (P.state === 'shot') {
     P.t -= dt;
     walk(.6);
@@ -5097,7 +5172,7 @@ let paused = false;
 function renderSheet() {
   const k = KL[P.klass], kids = branches(), need = EVO_NEED[k.tier] || 8, esc = t => String(t);
   const crit = Math.min(60, Math.round(100 * (L3([0, .15, .22, .3], bl('crit')) + .1 * gc('lens') + (P.chaosCrit || 0))));
-  const st = [['Health', `${Math.ceil(P.hp)} / ${P.max}`], ['Damage', `${Math.round(P.dmgMul * 100)}%`], ['Speed', `${Math.round(P.speedMul * 100)}%`], ['Crit', `${crit}%`],
+  const st = [['Health', `${Math.ceil(P.hp)} / ${P.max}`], ['Damage', `${Math.round(P.dmgMul * lvMul() * 100)}%`], ['Speed', `${Math.round(P.speedMul * 100)}%`], ['Crit', `${crit}%`],
     ['Level', P.lv], ['Torch oil', `${Math.round(P.oil)}%`], ['Stage', `${runStage} of 5`], ['Gold', P.gold]];
   const path = P.line.map(id => `<figure class="on"><img src="${PORTRAIT[id]}" alt=""><figcaption>${KL[id].name}</figcaption></figure>`).join('<i>›</i>')
     + (kids.length ? `<i>›</i><span class="sh-next">${kids.map(c => `<figure><img src="${PORTRAIT[c]}" alt=""><figcaption>${KL[c].name}</figcaption></figure>`).join('')}</span>` : '');
@@ -5451,6 +5526,7 @@ function loop() {
   const time = clock.elapsedTime;
   let dt = real;
   if (hitstop > 0) { hitstop -= real; dt = 0; }
+  else if (slowT > 0 && playing && !paused && !choosing) { slowT -= real; dt *= .4; }
   if (paused || choosing || winOpen) dt = 0;
   else if (trans) { updateTransition(real); dt = 0; }
   if (!playing) dt = 0;

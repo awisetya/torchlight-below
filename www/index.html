@@ -294,6 +294,17 @@ body.is-touch #descend{bottom:calc(env(safe-area-inset-bottom,0px) + 200px)}
 .pb.ic.cool{opacity:1;filter:grayscale(.75) brightness(.7)}
 body.is-touch #toasts{right:auto;left:50%;transform:translateX(-50%);top:58px;align-items:center}
 .ski{width:34px;height:34px;vertical-align:-11px;margin-right:6px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}
+#deskBar{position:fixed;right:18px;bottom:18px;display:flex;gap:10px;align-items:flex-end;z-index:3;opacity:0;pointer-events:none;transition:opacity .3s}
+#deskBar.on{opacity:1}body.is-touch #deskBar{display:none}
+#deskBar .ds{position:relative;width:58px;height:58px;border-radius:50%;background:rgba(20,22,30,.7);box-shadow:inset 0 0 0 2px rgba(232,163,61,.5),0 3px 10px rgba(0,0,0,.45)}
+#deskBar #dsSk,#deskBar #dsAtk{width:70px;height:70px}#deskBar .ds[hidden]{display:none}
+#deskBar .ds i{position:absolute;inset:6px;background:center/contain no-repeat;border-radius:50%}
+#deskBar .ds u{position:absolute;inset:0;border-radius:50%;background:conic-gradient(rgba(0,0,0,.66) calc(var(--cd,0) * 1turn),transparent 0)}
+#deskBar .ds.cool i{filter:grayscale(.75) brightness(.7)}#deskBar .ds.dry i{filter:grayscale(.6) brightness(.6)}
+#deskBar .ds kbd{position:absolute;left:50%;bottom:-7px;transform:translateX(-50%);min-width:20px;padding:1px 6px;border-radius:5px;background:#e8a33d;color:#1a1209;font:800 12px/16px system-ui,sans-serif;text-align:center;box-shadow:0 2px 4px rgba(0,0,0,.5)}
+#deskBar .ds span{position:absolute;inset:0;display:grid;place-items:center;font-weight:800;font-size:22px;color:#fff;text-shadow:0 0 6px #000,0 0 3px #000}
+body:not(.is-touch) #buyBtn::after{content:"E";display:inline-block;margin-left:8px;padding:0 5px;border-radius:4px;background:rgba(26,18,9,.85);color:#ffd27a;font:800 11px/16px system-ui,sans-serif;vertical-align:2px}
+body:not(.is-touch) #buyBtn:disabled::after{display:none}
 </style>
 </head>
 <body>
@@ -318,7 +329,8 @@ body.is-touch #toasts{right:auto;left:50%;transform:translateX(-50%);top:58px;al
 </div>
 <div id="bossBar"><b id="bossN">The Warden</b><div class="bar boss"><i id="bossF"></i></div></div>
 <div id="banner"><b id="bannerT"></b><span id="bannerS"></span></div>
-<div id="flashW"></div><div id="toasts" aria-live="polite"></div><div id="descend"></div>
+<div id="flashW"></div>
+<div id="deskBar" aria-hidden="true"><div class="ds" id="dsEq" hidden><i></i><u></u><kbd>Q</kbd><span></span></div><div class="ds" id="dsRoll"><i></i><u></u><kbd>K</kbd><span></span></div><div class="ds" id="dsSk"><i></i><u></u><kbd>L</kbd><span></span></div><div class="ds" id="dsAtk"><i></i><u></u><kbd>J</kbd><span></span></div></div><div id="toasts" aria-live="polite"></div><div id="descend"></div>
 <div id="evoReveal" aria-live="polite"><img alt=""><div><small></small><b></b><span></span></div></div>
 <div id="stageCard" aria-live="polite"><img alt=""><div><small></small><b></b><span></span></div></div>
 <div id="fade"></div>
@@ -4323,11 +4335,39 @@ function contactShadow(e) {
 
 // ----- skill button art -----
 function setSkillIcons(cls, klass) {
-  const C = CLASSES[cls]; if (!C) return;
+  const C = CLASSES[cls]; if (!C) return; setDeskIcons(cls, klass);
   const set = (id, key, name) => { const b = $(id); if (!b) return; b.style.backgroundImage = `url(art/skills/${key}.webp)`; b.classList.add('ic'); b.setAttribute('aria-label', name); b.title = name; };
   set('bAtk', 'atk_' + cls, C.btn[0]); set('bRoll', cls === 'mage' ? 'blink' : 'roll', C.btn[1]); set('bBlock', klass, (KL[klass] && KL[klass].btn) || C.btn[2]);
   $('bAtk').textContent = ''; $('bRoll').textContent = ''; $('bBlock').textContent = '';
 }
+
+// ----- desktop action bar: what J, K, L and Q do, with cooldowns -----
+function deskSlot(id, key) { return `<div class="ds" id="${id}"><i></i><u></u><kbd>${key}</kbd><span></span></div>`; }
+function setDeskIcons(cls, klass) {
+  const C = CLASSES[cls]; if (!C || !$('deskBar')) return;
+  const set = (id, img, name) => { const d = $(id); d.querySelector('i').style.backgroundImage = img ? `url(${img})` : ''; d.title = name; d.querySelector('span').dataset.n = name; };
+  set('dsAtk', `art/skills/atk_${cls}.webp`, C.btn[0]); set('dsRoll', `art/skills/${cls === 'mage' ? 'blink' : 'roll'}.webp`, C.btn[1]); set('dsSk', `art/skills/${klass}.webp`, (KL[klass] && KL[klass].btn) || C.btn[2]);
+}
+function updateDeskBar() {
+  const bar = $('deskBar'); if (!bar || isTouch) return;
+  bar.classList.toggle('on', playing && !P.dead);
+  const C = CLASSES[P.cls];
+  if (P.skillCd > (P._cdLast || 0) + .05) P._cdMax = P.skillCd; P._cdLast = P.skillCd;
+  const sk = $('dsSk'), cd = P.skillCd > 0 ? P.skillCd / (P._cdMax || C.skillCd) : 0;
+  sk.style.setProperty('--cd', cd.toFixed(3)); sk.classList.toggle('cool', cd > 0);
+  const t = P.skillCd > 0 ? Math.ceil(P.skillCd) : ''; const sp = sk.querySelector('span'); if (sp.textContent !== String(t)) sp.textContent = t;
+  const lowRes = P.st < 12; $('dsAtk').classList.toggle('dry', lowRes); $('dsRoll').classList.toggle('dry', lowRes); sk.classList.toggle('dry', lowRes && cd === 0);
+  const eq = $('dsEq'), q = P.equip && EQUIP[P.equip];
+  eq.hidden = !q;
+  if (q) {
+    if (eq.dataset.e !== P.equip) { eq.dataset.e = P.equip; eq.querySelector('i').style.backgroundImage = ICON['e_' + P.equip] ? `url(${ICON['e_' + P.equip]})` : ''; eq.title = q.n; }
+    const f = P.eqCd > 0 ? P.eqCd / (q.cd * (1 - hyper(.15, gc('cell')))) : 0; eq.style.setProperty('--cd', f.toFixed(3)); eq.classList.toggle('cool', f > 0);
+    const et = P.eqCd > 0 ? Math.ceil(P.eqCd) : ''; const es = eq.querySelector('span'); if (es.textContent !== String(et)) es.textContent = et;
+  }
+}
+// "Out of mana" / "Out of stamina", once in a while, so an empty bar never feels like a broken button
+let dryAt = -9;
+function sayDry() { if (gameTime - dryAt < 1.4) return; dryAt = gameTime; pop(P.pos, P.cls === 'mage' ? 'Out of mana' : 'Out of stamina', 'info'); }
 
 /* ---------- game state ---------- */
 const TYPES = {
@@ -4752,7 +4792,7 @@ function novaAt(pw, echo) {
     if (!a.friendly && a.pos.distanceTo(P.pos) < R + .2) { burst(a.pos, 0x9fe3ff, 4, 2, 1); scene.remove(a.mesh); arrows.splice(i, 1); }
   }
 }
-function flagStamina() { const b = $('stBar'); b.classList.remove('low'); void b.offsetWidth; b.classList.add('low'); }
+function flagStamina() { const b = $('stBar'); b.classList.remove('low'); void b.offsetWidth; b.classList.add('low'); sayDry(); }
 
 function hitEnemy(e, dmg, kb, heavy, from, proc = true) {
   if (e.inv) { if (Math.random() < .2) pop(e.pos, 'Immune', 'info'); return; }
@@ -6163,6 +6203,7 @@ function updateHUD() {
   const label = C.skillCd && P.skillCd > 0 ? String(Math.ceil(P.skillCd)) : sb.classList.contains('ic') ? '' : (KL[P.klass].btn || C.btn[2]);
   if (sb.textContent !== label) sb.textContent = label;
   sb.classList.toggle('cool', !!C.skillCd && P.skillCd > 0);
+  updateDeskBar();
 }
 
 /* ---------- main loop ---------- */

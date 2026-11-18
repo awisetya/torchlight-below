@@ -270,6 +270,25 @@ button{touch-action:manipulation}
 #stageCard span{display:block;margin-top:3px;font-size:14px;font-weight:700;color:#efe5cf;text-shadow:0 2px 6px #000}
 #bEquip.ic{background-size:84% 84%!important;background-position:center!important;background-repeat:no-repeat!important;color:#fff;font-size:18px;font-weight:800;text-shadow:0 0 6px #000,0 0 3px #000}
 #bEquip.ic.cool{filter:grayscale(.7) brightness(.75)}
+#flashW{position:fixed;inset:0;pointer-events:none;opacity:0;z-index:6;mix-blend-mode:screen}
+#toasts{position:fixed;right:14px;top:120px;display:flex;flex-direction:column;gap:8px;z-index:7;pointer-events:none}
+.toast{min-width:200px;max-width:260px;padding:9px 12px;border-radius:10px;background:rgba(14,16,22,.92);border:1px solid rgba(255,210,122,.5);box-shadow:0 6px 18px rgba(0,0,0,.5);animation:toastIn .35s ease-out;transition:opacity .5s,transform .5s}
+.toast.out{opacity:0;transform:translateX(20px)}.toast small{display:block;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#e8a33d}.toast b{display:block;color:#ffd27a;font-size:15px}.toast span{display:block;color:#cfc4ad;font-size:12px;line-height:1.3}
+@keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
+#descend{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 22px);transform:translate(-50%,10px);padding:10px 16px;border-radius:12px;background:rgba(14,16,22,.9);border:1px solid #e8a33d;color:#ffd27a;font-weight:700;font-size:14px;opacity:0;pointer-events:none;transition:opacity .3s,transform .3s;white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
+#descend.on{opacity:1;transform:translate(-50%,0)}
+body.is-touch #descend{bottom:calc(env(safe-area-inset-bottom,0px) + 200px)}
+#stageCard.clear{border-color:#ffd27a;box-shadow:0 0 0 2px rgba(255,210,122,.25),0 0 46px rgba(255,190,90,.45),0 12px 40px rgba(0,0,0,.7)}
+#stageCard.clear b{font-size:clamp(34px,7vw,58px);letter-spacing:.04em;color:#ffd27a}
+#evoReveal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;gap:22px;pointer-events:none;opacity:0;z-index:6;background:radial-gradient(ellipse at center,rgba(0,0,0,.55),rgba(0,0,0,0) 70%)}
+#evoReveal.on{animation:evoIn 3s ease-out forwards}
+#evoReveal img{width:min(220px,34vw);aspect-ratio:3/4;object-fit:cover;object-position:50% 0;border-radius:14px;border:3px solid var(--c,#ffd27a);box-shadow:0 0 50px var(--c,#ffd27a)}
+#evoReveal small{display:block;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#efe5cf;text-shadow:0 2px 6px #000}
+#evoReveal b{display:block;font-family:"Grenze Gotisch",Georgia,serif;font-weight:600;font-size:clamp(40px,8vw,72px);line-height:1;color:var(--c,#ffd27a);text-shadow:0 3px 14px #000,0 0 30px var(--c,#ffd27a)}
+#evoReveal span{display:block;margin-top:6px;font-size:15px;font-weight:700;color:#efe5cf;text-shadow:0 2px 6px #000}#evoReveal em{font-style:normal;color:var(--c,#ffd27a)}
+@media (max-width:560px){#evoReveal{flex-direction:column;text-align:center;gap:12px}}
+@keyframes evoIn{0%{opacity:0;transform:scale(1.08)}12%{opacity:1;transform:scale(1)}82%{opacity:1}100%{opacity:0}}
+.pop.crit{font-size:30px;color:#ffd23f;text-shadow:0 2px 0 rgba(0,0,0,.8),0 0 12px rgba(255,140,40,.8)}
 </style>
 </head>
 <body>
@@ -294,6 +313,8 @@ button{touch-action:manipulation}
 </div>
 <div id="bossBar"><b id="bossN">The Warden</b><div class="bar boss"><i id="bossF"></i></div></div>
 <div id="banner"><b id="bannerT"></b><span id="bannerS"></span></div>
+<div id="flashW"></div><div id="toasts" aria-live="polite"></div><div id="descend"></div>
+<div id="evoReveal" aria-live="polite"><img alt=""><div><small></small><b></b><span></span></div></div>
 <div id="stageCard" aria-live="polite"><img alt=""><div><small></small><b></b><span></span></div></div>
 <div id="fade"></div>
 
@@ -873,6 +894,7 @@ function buildRoom(room) {
 
   if (room.type === 'shop') buildShop(room); else { $('tags').innerHTML = ''; shopSlots = []; }
   buildProps(room);
+  decorRoom(room);
 
   // stairs down
   stairsObj = null;
@@ -881,7 +903,7 @@ function buildRoom(room) {
     const hole = new T.Mesh(new T.BoxGeometry(1.7, .04, 1.7), basic(0x020203)); hole.position.y = .02;
     for (let i = 0; i < 3; i++) { const st = new T.Mesh(new T.BoxGeometry(1.5, .03, .4 - i * .05), M(0x2a2622, { flatShading: true })); st.position.set(0, .045, -.5 + i * .45); g.add(st); }
     const ring = flat(new T.RingGeometry(.95, 1.15, 40), decalMat(0xffb347, .6)); ring.position.y = .05;
-    g.add(hole, ring); g.visible = !!room.stairsOpen; roomGroup.add(g);
+    g.add(hole, ring); stairsBeacon(g); g.visible = !!room.stairsOpen; roomGroup.add(g);
     stairsObj = g;
     if (room.stairsOpen) { propLight.color.set(0xffa040); propLight.position.set(0, .9, 0); propLight.intensity = 1.5; }
   }
@@ -2507,6 +2529,7 @@ function dropLoot(e) {
 function spawnLoot(pos, kind, val) {
   const mesh = new T.Mesh(kind === 'gold' ? coinGeo : flaskGeo, kind === 'gold' ? coinMat : kind === 'heal' ? healMat : flaskMat);
   mesh.castShadow = true;
+  if (kind !== 'gold') mesh.add(halo(kind === 'heal' ? 0xff6a5a : 0xffb347, 1.2, .55));
   const p = pos.clone().setY(.6);
   mesh.position.copy(p); scene.add(mesh);
   loot.push({ mesh, pos: p, vel: new T.Vector3(rand(-2.5, 2.5), rand(3, 5), rand(-2.5, 2.5)), kind, val, t: 0 });
@@ -2522,10 +2545,10 @@ function updateLoot(dt) {
     const l = loot[i]; l.t += dt;
     const dx = P.pos.x - l.pos.x, dz = P.pos.z - l.pos.z, d = Math.hypot(dx, dz);
     if (l.t > .45 && !P.dead && (d < 2.4 || !roomLocked)) {
-      const sp = !roomLocked ? 9 : 6;
+      const sp = (!roomLocked ? 9 : 6) * (1 + Math.min(2.2, (l.t - .45) * 2.6));
       l.pos.x += dx / (d || 1) * sp * dt; l.pos.z += dz / (d || 1) * sp * dt;
       l.pos.y = lerp(l.pos.y, .6, Math.min(1, dt * 8));
-      if (d < .45) { collectLoot(l); scene.remove(l.mesh); loot.splice(i, 1); continue; }
+      if (d < .45) { sparkFx(l.pos.clone(), l.kind === 'gold' ? 0xffd23f : l.kind === 'heal' ? 0xff7a6a : 0xffb347, .55); collectLoot(l); scene.remove(l.mesh); loot.splice(i, 1); continue; }
     } else {
       l.vel.y -= 14 * dt; l.pos.addScaledVector(l.vel, dt);
       if (l.pos.y < .08) { l.pos.y = .08; l.vel.y *= -.35; l.vel.x *= .6; l.vel.z *= .6; }
@@ -2920,6 +2943,7 @@ function pickChoice(i) {
   $('relicScreen').classList.remove('on');
   sfx('pick');
   choiceOpts[i].pick();
+  choiceGap = Math.max(choiceGap, .55);
   if (introPending && !choosing) { introPending = false; stageCard(); }
 }
 
@@ -3174,6 +3198,7 @@ function updateBlasts(dt) {
     blasts.splice(i, 1);
     if (b.ring) scene.remove(b.ring);
     burst(b.pos.clone().setY(.4), b.hostile ? 0xff5a3a : 0xff8a2a, 16, 6, 3);
+    crackFx(b.pos, b.r * .8, b.hostile ? 0xff5a3a : 0xff8a2a); sparkFx(b.pos.clone().setY(.5), 0xffc070, 1.6 * b.r / 1.6);
     ringFx(b.pos, b.hostile ? 0xff3b2f : 0xff8a2a, .3, b.r, .25, .7);
     shake = Math.max(shake, .14);
     if (!b.spare) for (const e of enemies) {
@@ -3469,7 +3494,7 @@ const ACH = {
   codex6:  { n: 'Student of Paths', d: 'Discover 6 classes.' },
   codex21: { n: 'Master of Paths', d: 'Discover all 21 classes.' }
 };
-function achieve(id) { if (CODEX.ach[id]) return; CODEX.ach[id] = true; saveCodex(); later(.6, () => banner('Achievement: ' + ACH[id].n, ACH[id].d)); }
+function achieve(id) { if (CODEX.ach[id]) return; CODEX.ach[id] = true; saveCodex(); setTimeout(() => toast(ACH[id].n, ACH[id].d), 900); }
 function discover(id) {
   if (CODEX.disc[id]) return false;
   CODEX.disc[id] = true; saveCodex();
@@ -3633,7 +3658,7 @@ function evolveTo(id) {
   shake = Math.max(shake, .35); hitstop = Math.max(hitstop, .15);
   const c = parseInt(k.color.slice(1), 16);
   for (let i = 0; i < 3; i++) later(i * .12, () => { ringFx(P.pos, c, .3, 3.5 + i, .55, .9); burst(P.pos.clone().setY(1.1), c, 30, 6, 6); });
-  sfx('level'); banner(`You are now ${aan(k.name)}`, `${k.sig}: ${first ? 'a new path, recorded in your Codex.' : 'ready.'}`);
+  sfx('level'); evoReveal(k, first);
   if (id === 'beastcaller') summonWolves();
 }
 function restyleHero() {
@@ -3852,6 +3877,443 @@ function sigDodge(start) {
   if (k === 'stalker' && !start) { P.iframes = Math.max(P.iframes, .7); P.empower = true; P.stalkT = 1.2; burst(P.pos.clone().setY(.8), 0x2a2240, 16, 3, 2); }
   if (k === 'summoner' && start) spawnOrbs(1, 4, 1.15, 9, 0x9ff0e0);
   if (k === 'stormcaller' && !start) { const t = nearestEnemy(7); if (t) lightning(t, 1); }
+}
+/* ---------- presentation pass: boss falls, stage clear, reward pacing, combat VFX, biome props ---------- */
+let choiceGap = 0, camPunch = 0, stageT0 = 0, stageK0 = 0;
+const fmtT = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+function markStage() { stageT0 = gameTime; stageK0 = kills; }
+function flashScreen(c = '#fff', a = .7, d = .5) {
+  const f = $('flashW'); if (!f) return;
+  f.style.transition = 'none'; f.style.background = c; f.style.opacity = a; void f.offsetWidth;
+  f.style.transition = `opacity ${d}s ease-out`; f.style.opacity = 0;
+}
+function toast(t, s) {
+  const el = document.createElement('div'); el.className = 'toast';
+  el.innerHTML = `<small>Achievement</small><b>${t}</b>${s ? `<span>${s}</span>` : ''}`;
+  $('toasts').appendChild(el);
+  setTimeout(() => el.classList.add('out'), 3400); setTimeout(() => el.remove(), 4000);
+}
+
+// ----- the boss falls -----
+function bossFall(e) {
+  slowT = 1.3; camPunch = 1; shake = Math.max(shake, .6);
+  flashScreen('#fff3d6', .75, .8);
+  const c = e.pos.clone().setY(0);
+  for (let i = 0; i < 3; i++) later(i * .18, () => {
+    ringFx(c, i ? 0xffd27a : 0xffffff, .4, 4 + i * 1.6, .7, .85);
+    burst(c.clone().setY(1.2), i % 2 ? 0x16110c : 0xffd27a, 26, 7, 6);
+  });
+  sparkFx(c.clone().setY(1.3), 0xfff0c0, 3.4);
+}
+function bossDissolve(e, dt) {
+  e.pos.y -= dt * .45;
+  const r = e.model && e.model.root; if (r) r.scale.multiplyScalar(1 - dt * .22);
+  if (Math.random() < .7) burst(e.pos.clone().setY(.3 + Math.random() * 1.8), Math.random() < .55 ? 0x14100c : 0x5a4030, 2, 2.6, 3.2);
+}
+function stageClear(boss) {
+  const c = $('stageCard'), n = (stageIdx() % 5) + 1, fin = boss === 'final';
+  c.classList.add('clear');
+  c.querySelector('img').src = `art/stage/${n}.webp`;
+  c.querySelector('small').textContent = `${bossName(boss)} falls`;
+  c.querySelector('b').textContent = fin ? 'The dark is lifted' : 'Stage cleared';
+  c.querySelector('span').textContent = `Time ${fmtT(gameTime - stageT0)} · ${kills - stageK0} kills · ${Math.ceil(P.hp)} / ${P.max} health`;
+  c.classList.add('on'); clearTimeout(stageCardTimer);
+  stageCardTimer = setTimeout(() => { c.classList.remove('on'); setTimeout(() => c.classList.remove('clear'), 500); }, 3200);
+}
+
+// ----- evolution reveal -----
+function evoReveal(k, first) {
+  const el = $('evoReveal');
+  el.querySelector('img').src = PORTRAIT[P.klass];
+  el.querySelector('small').textContent = first ? 'A new path, recorded in your Codex' : 'You evolve';
+  el.querySelector('b').textContent = k.name;
+  el.querySelector('span').innerHTML = `New special: <em>${k.sig}</em>`;
+  el.style.setProperty('--c', k.color);
+  el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
+  flashScreen(k.color, .5, 1); slowT = Math.max(slowT, .9); camPunch = Math.max(camPunch, .6);
+  choiceGap = Math.max(choiceGap, 3.1);
+  setTimeout(() => el.classList.remove('on'), 3000);
+}
+
+// ----- the way down -----
+let beamTex = null;
+function beamTexture() {
+  if (beamTex) return beamTex;
+  const c = document.createElement('canvas'); c.width = 4; c.height = 128; const g = c.getContext('2d');
+  const gr = g.createLinearGradient(0, 0, 0, 128); gr.addColorStop(0, 'rgba(255,200,120,0)'); gr.addColorStop(.6, 'rgba(255,190,110,.35)'); gr.addColorStop(1, 'rgba(255,170,90,.9)');
+  g.fillStyle = gr; g.fillRect(0, 0, 4, 128);
+  beamTex = new T.CanvasTexture(c); return beamTex;
+}
+function stairsBeacon(g) {
+  const beam = new T.Mesh(new T.CylinderGeometry(.82, .95, 3.4, 28, 1, true),
+    new T.MeshBasicMaterial({ map: beamTexture(), transparent: true, opacity: .55, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, fog: false }));
+  beam.position.y = 1.7; g.add(beam);
+  const arrow = new T.Group(), am = basic(0xffd27a, { fog: false });
+  [-1, 1].forEach(s => { const bar = new T.Mesh(new T.BoxGeometry(.5, .1, .1), am); bar.position.x = s * .17; bar.rotation.z = s * .7; arrow.add(bar); });
+  arrow.add(halo(0xffc070, 1.3, .55)); arrow.position.y = 2.5; g.add(arrow);
+  g.userData.beam = beam; g.userData.arrow = arrow;
+}
+function animStairs(time) {
+  if (!stairsObj || !stairsObj.visible || !stairsObj.userData.arrow) return;
+  stairsObj.userData.arrow.position.y = 2.4 + Math.sin(time * 3) * .15;
+  stairsObj.userData.arrow.rotation.y = time * 1.4;
+  stairsObj.userData.beam.material.opacity = .42 + .14 * Math.sin(time * 2.2);
+}
+function descendPrompt() {
+  const el = $('descend'); if (!el) return;
+  const on = !!(playing && cur && cur.stairsOpen && !trans && !P.dead && !choosing && relicT <= 0 && !choiceQ.length && runStage < 5 && Math.hypot(P.pos.x, P.pos.z) < 3.6);
+  if (on) { const nx = STAGES[runStage % STAGES.length]; const t = `Step into the light to descend · Stage ${runStage + 1}: ${nx.name}`; if (el.textContent !== t) el.textContent = t; }
+  el.classList.toggle('on', on);
+}
+
+// ----- combat VFX -----
+let starTex = null; const sparks = [];
+function starTexture() {
+  if (starTex) return starTex;
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(.25, 'rgba(255,255,255,.55)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+  g.globalCompositeOperation = 'lighter'; g.fillStyle = 'rgba(255,255,255,.95)';
+  [[0, 1], [Math.PI / 2, 1], [Math.PI / 4, .55], [-Math.PI / 4, .55]].forEach(([a, k]) => { g.save(); g.translate(32, 32); g.rotate(a); g.beginPath(); g.moveTo(-31 * k, 0); g.lineTo(0, -2.2); g.lineTo(31 * k, 0); g.lineTo(0, 2.2); g.closePath(); g.fill(); g.restore(); });
+  starTex = new T.CanvasTexture(c); return starTex;
+}
+function sparkFx(pos, color, s = 1) {
+  let sp = sparks.find(x => !x.alive);
+  if (!sp) {
+    if (sparks.length > 48) return;
+    const m = new T.SpriteMaterial({ map: starTexture(), color, transparent: true, blending: T.AdditiveBlending, depthWrite: false, fog: false });
+    sp = { s: new T.Sprite(m) }; sp.s.renderOrder = 4; scene.add(sp.s); sparks.push(sp);
+  }
+  sp.alive = true; sp.t = 0; sp.max = .15 + .05 * s; sp.k = s;
+  sp.s.visible = true; sp.s.material.color.set(color); sp.s.material.rotation = Math.random() * Math.PI; sp.s.position.copy(pos);
+}
+function updateSparks(dt) {
+  for (const sp of sparks) {
+    if (!sp.alive) continue;
+    sp.t += dt; const p = sp.t / sp.max;
+    sp.s.scale.setScalar((.55 + p * .95) * sp.k); sp.s.material.opacity = Math.max(0, 1 - p * p);
+    if (p >= 1) { sp.alive = false; sp.s.visible = false; }
+  }
+}
+function hitVfx(e, dir, crit, heavy, col) {
+  const at = e.pos.clone().setY(.9).addScaledVector(dir, -e.r * .55);
+  sparkFx(at, crit ? 0xfff2a0 : col, crit ? 1.8 : heavy ? 1.35 : 1);
+  if (crit) { ringFx(e.pos, 0xffd23f, .2, 1.3, .22, .8); shake = Math.max(shake, .16); }
+}
+// ground cracks after slams and blasts
+let crackTexs = null; const decals = [];
+function crackTexture() {
+  if (crackTexs) return crackTexs[Math.floor(Math.random() * crackTexs.length)];
+  crackTexs = [0, 1, 2].map(() => {
+    const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+    g.strokeStyle = 'rgba(10,8,6,.95)'; g.lineCap = 'round';
+    const branch = (x, y, a, len, w) => { if (len < 6 || w < .5) return; const nx = x + Math.cos(a) * len, ny = y + Math.sin(a) * len; g.lineWidth = w; g.beginPath(); g.moveTo(x, y); g.lineTo(nx, ny); g.stroke(); branch(nx, ny, a + (Math.random() - .5) * .9, len * .72, w * .72); if (Math.random() < .45) branch(nx, ny, a + (Math.random() < .5 ? -1 : 1) * (.5 + Math.random() * .6), len * .55, w * .6); };
+    const n = 6 + Math.floor(Math.random() * 3); for (let i = 0; i < n; i++) branch(64, 64, i / n * TAU + Math.random() * .4, 14 + Math.random() * 8, 3.4);
+    g.fillStyle = 'rgba(10,8,6,.9)'; g.beginPath(); g.arc(64, 64, 7, 0, TAU); g.fill();
+    return new T.CanvasTexture(c);
+  });
+  return crackTexs[0];
+}
+function crackFx(pos, r = 1.5, glow) {
+  if (!roomGroup) return;
+  const m = flat(new T.PlaneGeometry(r * 2.2, r * 2.2), new T.MeshBasicMaterial({ map: crackTexture(), transparent: true, opacity: .9, depthWrite: false, fog: false }));
+  m.position.set(pos.x, .035, pos.z); m.rotation.z = Math.random() * TAU; roomGroup.add(m);
+  decals.push({ m, t: 0, life: 2.6 });
+  if (glow) { const gm = flat(new T.CircleGeometry(r * .9, 24), decalMat(glow, .35)); gm.position.set(pos.x, .036, pos.z); roomGroup.add(gm); decals.push({ m: gm, t: 0, life: .8 }); }
+}
+function updateDecals(dt) {
+  for (let i = decals.length - 1; i >= 0; i--) {
+    const d = decals[i]; d.t += dt;
+    d.m.material.opacity = Math.max(0, (d.life === .8 ? .35 : .9) * (1 - Math.max(0, d.t - d.life * .5) / (d.life * .5)));
+    if (d.t >= d.life) { if (d.m.parent) d.m.parent.remove(d.m); d.m.material.dispose(); decals.splice(i, 1); }
+  }
+}
+// telegraphs: cones fill up as the attack winds up, slam rings pulse, and a landed slam leaves cracks
+function teleFx(e) {
+  const md = e.model; if (!md) return;
+  const p = e.state === 'windup' ? Math.min(1, e.t / ((e.def.windup || .6) * 1)) : 1;
+  if (md.tele && md.tele.visible && md.tele.geometry) {
+    if (!md.teleFill) { md.teleFill = new T.Mesh(md.tele.geometry, decalMat(0xff7a3a, .4)); md.teleFill.renderOrder = 3; md.tele.add(md.teleFill); }
+    md.teleFill.scale.setScalar(Math.max(.02, p)); md.teleFill.material.opacity = .2 + .35 * p;
+    md.tele.material.opacity = Math.max(md.tele.material.opacity, .22 + .18 * Math.sin(gameTime * 24) * p);
+  }
+  if (md.slam) {
+    if (md.slam.visible) { const k = .5 + .5 * Math.sin(gameTime * 20); if (md.slam.children[0]) md.slam.children[0].material.opacity = .55 + .4 * k; md._slamOn = true; }
+    else if (md._slamOn) { md._slamOn = false; if (!e.dead && e.state !== 'stun') crackFx(md.slam.position, (md.slam.scale.x || 1) * (md.slamFill && md.slamFill.geometry.parameters ? md.slamFill.geometry.parameters.radius : 2) * .8, 0xff8a3a); }
+  }
+  if (md.line && md.line.visible && md.line.material) md.line.material.opacity = .25 + .25 * (.5 + .5 * Math.sin(gameTime * 26));
+}
+
+// ----- biome props -----
+const decorAnim = [];
+const PROP_GEO = {};
+const pg = (k, f) => PROP_GEO[k] || (PROP_GEO[k] = f());
+let propRand = Math.random;
+const prr = (a, b) => a + propRand() * (b - a);
+function seeded(seed) { let s = seed >>> 0 || 1; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+const PM = {};
+const pm = (c, o) => { const k = c + JSON.stringify(o || {}); return PM[k] || (PM[k] = M(c, Object.assign({ flatShading: true }, o))); };
+const pb = (c, o) => { const k = 'b' + c + JSON.stringify(o || {}); return PM[k] || (PM[k] = basic(c, Object.assign({ fog: false }, o))); };
+function pmesh(geo, mat, x = 0, y = 0, z = 0, parent) { const m = new T.Mesh(geo, mat); m.position.set(x, y, z); if (parent) parent.add(m); return m; }
+function pflame(g, x, y, z, c = 0xffb347, s = 1, noHalo) {
+  const f = pmesh(pg('flame', () => new T.ConeGeometry(.035, .1, 6)), pb(c), x, y, z, g); f.scale.setScalar(s); f.userData.dyn = true;
+  const h = noHalo ? null : halo(c, .55 * s, .5); if (h) { h.position.set(x, y + .02, z); g.add(h); }
+  decorAnim.push(t => { const k = 1 + Math.sin(t * 13 + x * 7) * .12 + Math.sin(t * 23 + z * 5) * .06; f.scale.set(s * k, s * (k + .1), s * k); if (h) h.material.opacity = .4 + .12 * k; });
+}
+function candles(g, n = 4) {
+  const wax = pm(0xe8dcc0);
+  for (let i = 0; i < n; i++) {
+    const h = prr(.1, .28), x = prr(-.22, .22), z = prr(-.22, .22);
+    pmesh(pg('cand' + Math.round(h * 20), () => new T.CylinderGeometry(.035, .04, h, 7)), wax, x, h / 2, z, g);
+    pflame(g, x, h + .05, z, 0xffc060, .9, true);
+  }
+  const hh = halo(0xffb860, 1.1, .45); hh.position.y = .35; g.add(hh);
+}
+function bones(g, c = 0xd8cfb8) {
+  const bm = pm(c);
+  for (let i = 0; i < 4; i++) { const b = pmesh(pg('bone', () => new T.CylinderGeometry(.025, .025, .34, 5)), bm, prr(-.25, .25), .03, prr(-.25, .25), g); b.rotation.set(Math.PI / 2, 0, prr(0, TAU)); }
+  const sk = pmesh(pg('skull', () => new T.SphereGeometry(.1, 8, 6)), bm, prr(-.1, .1), .09, prr(-.1, .1), g); sk.scale.set(1, .9, 1.15);
+  [-1, 1].forEach(s => pmesh(pg('sock', () => new T.SphereGeometry(.025, 5, 4)), pb(0x0a0806), s * .04, .1, .1, sk));
+}
+function chainDown(g, len = 1.4) {
+  const lm = pm(0x4a4a50, { metalness: .6, roughness: .45 }), n = Math.floor(len / .1);
+  for (let i = 0; i < n; i++) { const l = pmesh(pg('link', () => new T.TorusGeometry(.045, .013, 4, 8)), lm, 0, -i * .095, 0, g); l.rotation.y = i % 2 ? Math.PI / 2 : 0; }
+  if (propRand() < .5) pmesh(pg('hook', () => new T.TorusGeometry(.08, .016, 4, 10, Math.PI * 1.3)), lm, 0, -n * .095 - .06, 0, g).rotation.z = Math.PI * .85;
+}
+// Crypt
+function sarcophagus(g, stone) {
+  pmesh(pg('sarcB', () => new T.BoxGeometry(.7, .45, 1.5)), pm(stone), 0, .225, 0, g).castShadow = true;
+  const lid = pmesh(pg('sarcL', () => new T.BoxGeometry(.8, .12, 1.6)), pm(stone, { color: new T.Color(stone).multiplyScalar(1.15) }), 0, .51, 0, g); lid.castShadow = true;
+  if (propRand() < .4) { lid.rotation.y = prr(.2, .45); lid.position.x = .18; }
+  pmesh(pg('cross1', () => new T.BoxGeometry(.08, .03, .7)), pm(0x8a8270), 0, .585, 0, g); pmesh(pg('cross2', () => new T.BoxGeometry(.36, .03, .08)), pm(0x8a8270), 0, .585, -.18, g);
+}
+function gravestone(g, stone) {
+  const s = pmesh(pg('grave', () => { const sh = new T.Shape(); sh.moveTo(-.22, 0); sh.lineTo(-.22, .5); sh.absarc(0, .5, .22, Math.PI, 0, true); sh.lineTo(.22, 0); return new T.ExtrudeGeometry(sh, { depth: .1, bevelEnabled: false }); }), pm(stone), 0, 0, -.05, g);
+  s.rotation.z = prr(-.15, .15); s.rotation.x = prr(-.1, .12); s.castShadow = true;
+  pmesh(pg('graveC', () => new T.BoxGeometry(.04, .2, .02)), pm(0x1a1814), 0, .52, .06, s); pmesh(pg('graveC2', () => new T.BoxGeometry(.13, .04, .02)), pm(0x1a1814), 0, .56, .06, s);
+}
+function brokenStatue(g, stone) {
+  pmesh(pg('ped', () => new T.BoxGeometry(.6, .4, .6)), pm(stone), 0, .2, 0, g).castShadow = true;
+  const body = pmesh(pg('statB', () => new T.CylinderGeometry(.16, .22, .9, 7)), pm(stone, { color: new T.Color(stone).multiplyScalar(1.25) }), 0, .85, 0, g); body.castShadow = true;
+  pmesh(pg('statS', () => new T.BoxGeometry(.5, .14, .22)), body.material, 0, .42, 0, body);
+  const head = pmesh(pg('statH', () => new T.SphereGeometry(.13, 7, 6)), body.material, prr(-.4, .4), .12, .45, g); head.rotation.set(prr(0, 2), prr(0, 2), 0);
+  for (let i = 0; i < 3; i++) pmesh(pg('rub', () => new T.DodecahedronGeometry(.07)), body.material, prr(-.4, .4), .05, prr(.2, .5), g);
+}
+function urn(g) { const u = pmesh(pg('urn', () => new T.LatheGeometry([[0, 0], [.1, 0], [.15, .12], [.13, .26], [.07, .32], [.09, .36], [0, .36]].map(p => new T.Vector2(p[0], p[1])), 8)), pm(0x6a5040), 0, 0, 0, g); u.castShadow = true; }
+// Ember Depths
+function brazier(g, c = 0xff7a2a) {
+  const iron = pm(0x2a2422, { metalness: .5 });
+  [0, 1, 2].forEach(i => { const l = pmesh(pg('brL', () => new T.CylinderGeometry(.02, .025, .55, 5)), iron, Math.cos(i * 2.1) * .14, .27, Math.sin(i * 2.1) * .14, g); l.rotation.set(Math.sin(i * 2.1) * .25, 0, -Math.cos(i * 2.1) * .25); });
+  pmesh(pg('brBowl', () => new T.CylinderGeometry(.24, .12, .16, 9, 1, true)), iron, 0, .6, 0, g);
+  pmesh(pg('brCoal', () => new T.CylinderGeometry(.21, .21, .04, 9)), pb(0xff5a1a), 0, .64, 0, g);
+  pflame(g, 0, .78, 0, c, 2.6); pflame(g, .07, .74, .04, 0xffd060, 1.6);
+}
+function anvil(g) {
+  const m = pm(0x34302e, { metalness: .6, roughness: .4 });
+  pmesh(pg('anB', () => new T.BoxGeometry(.3, .3, .22)), pm(0x4a3626), 0, .15, 0, g);
+  pmesh(pg('anT', () => new T.BoxGeometry(.55, .14, .2)), m, 0, .37, 0, g).castShadow = true;
+  pmesh(pg('anH', () => new T.ConeGeometry(.07, .22, 6)), m, .36, .37, 0, g).rotation.z = -Math.PI / 2;
+}
+function spikes(g, c) { for (let i = 0; i < 4; i++) { const s = pmesh(pg('spk', () => new T.ConeGeometry(.14, 1, 5)), pm(c), prr(-.3, .3), 0, prr(-.3, .3), g); const h = prr(.4, 1.1); s.scale.set(prr(.6, 1.2), h, prr(.6, 1.2)); s.position.y = h / 2; s.rotation.z = prr(-.2, .2); s.castShadow = true; } }
+function slag(g) { for (let i = 0; i < 5; i++) { const r = pmesh(pg('slag', () => new T.DodecahedronGeometry(.12)), pm(0x221a16), prr(-.3, .3), .06, prr(-.3, .3), g); r.scale.setScalar(prr(.6, 1.6)); } pmesh(pg('slagG', () => new T.CircleGeometry(.35, 10)), decalMat(0xff5a1a, .5), 0, .02, 0, g).rotation.x = -Math.PI / 2; }
+// Frozen Halls
+function iceCluster(g) {
+  const ice = pm(0xbfe8ff, { transparent: true, opacity: .82, emissive: 0x1a4a66, roughness: .2 });
+  for (let i = 0; i < 5; i++) { const c = pmesh(pg('ice', () => new T.OctahedronGeometry(.16, 0)), ice, prr(-.25, .25), 0, prr(-.25, .25), g); const h = prr(1.4, 3.6); c.scale.set(prr(.7, 1.1), h, prr(.7, 1.1)); c.position.y = h * .12; c.rotation.set(prr(-.3, .3), prr(0, TAU), prr(-.3, .3)); }
+  const h = halo(0x9fe3ff, 1.4, .25); h.position.y = .4; g.add(h);
+}
+function snowDrift(g) { for (let i = 0; i < 3; i++) { const s = pmesh(pg('snow', () => new T.SphereGeometry(.4, 9, 6, 0, TAU, 0, Math.PI / 2)), pm(0xb8c8d6, { roughness: .9 }), prr(-.3, .3), 0, prr(-.3, .3), g); s.scale.set(prr(.8, 1.5), prr(.2, .45), prr(.8, 1.4)); } }
+function frozenStatue(g, stone) { brokenStatue(g, 0x8fa8b8); const ice = pm(0xcfeeff, { transparent: true, opacity: .45, roughness: .1 }); const shell = pmesh(pg('iceShell', () => new T.CylinderGeometry(.32, .38, 1.3, 7)), ice, 0, .9, 0, g); shell.rotation.y = .3; }
+// Void Spire
+function voidShards(g) {
+  const m = pm(0x6a3aa8, { emissive: 0x3a1066, roughness: .3 }), y0 = prr(.7, 1.3);
+  for (let i = 0; i < 3; i++) {
+    const s = pmesh(pg('vsh', () => new T.OctahedronGeometry(.16, 0)), m, prr(-.3, .3), y0 + i * .3, prr(-.3, .3), g); s.scale.set(.6, 1.8, .6); s.userData.dyn = true;
+    const ph = prr(0, TAU), by = s.position.y; decorAnim.push(t => { s.position.y = by + Math.sin(t * 1.3 + ph) * .12; s.rotation.y = t * .6 + ph; });
+  }
+  const h = halo(0xb06aff, 1.6, .35); h.position.y = y0 + .3; g.add(h);
+}
+function voidArch(g, stone) {
+  pmesh(pg('vaP', () => new T.BoxGeometry(.28, 1.6, .28)), pm(stone), -.55, .8, 0, g).castShadow = true;
+  const p2 = pmesh(pg('vaP2', () => new T.BoxGeometry(.28, .9, .28)), pm(stone), .55, .45, 0, g); p2.rotation.z = .1;
+  const top = pmesh(pg('vaT', () => new T.BoxGeometry(.9, .22, .3)), pm(stone), .2, .12, .5, g); top.rotation.set(.1, .6, .2);
+}
+// Lightless Throne
+function wallBanner(g, c) {
+  const b = pmesh(pg('ban', () => { const s = new T.Shape(); s.moveTo(-.28, 0); s.lineTo(.28, 0); s.lineTo(.28, -1.1); s.lineTo(.12, -.95); s.lineTo(0, -1.2); s.lineTo(-.14, -.98); s.lineTo(-.28, -1.15); s.closePath(); return new T.ShapeGeometry(s); }), pm(c, { side: T.DoubleSide }), 0, 0, 0, g);
+  pmesh(pg('banRod', () => new T.CylinderGeometry(.02, .02, .7, 6)), pm(0x8a6a2a, { metalness: .6 }), 0, 0, .01, g).rotation.z = Math.PI / 2;
+  pmesh(pg('banSig', () => new T.CircleGeometry(.1, 6)), pb(0xc89a3a), 0, -.45, .01, g);
+  b.userData.dyn = true; decorAnim.push(t => { b.rotation.x = Math.sin(t * 1.4 + g.position.x) * .06; });
+}
+function candelabra(g) {
+  const gold = pm(0x6a5222, { metalness: .7, roughness: .35 });
+  pmesh(pg('cdP', () => new T.CylinderGeometry(.03, .1, 1.3, 6)), gold, 0, .65, 0, g);
+  [-1, 0, 1].forEach(s => { pmesh(pg('cdA', () => new T.CylinderGeometry(.02, .02, .3, 5)), gold, s * .15, 1.3, 0, g); pmesh(pg('cdC', () => new T.CylinderGeometry(.025, .025, .14, 6)), pm(0xe8dcc0), s * .15, 1.47, 0, g); pflame(g, s * .15, 1.57, 0, 0xffb060, .9); });
+  pmesh(pg('cdBar', () => new T.BoxGeometry(.34, .03, .03)), gold, 0, 1.3, 0, g);
+}
+function obelisk(g, c) {
+  pmesh(pg('obl', () => new T.CylinderGeometry(.12, .26, 1.9, 4)), pm(0x16121a), 0, .95, 0, g).castShadow = true;
+  pmesh(pg('oblR', () => new T.PlaneGeometry(.06, 1.1)), pb(c), 0, 1, .135, g).rotation.x = -.06;
+  const h = halo(c, .9, .3); h.position.y = 1; g.add(h);
+}
+// floor marks
+let runeTex = null;
+function runeTexture() {
+  if (runeTex) return runeTex;
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+  g.strokeStyle = 'rgba(255,255,255,.95)'; g.lineWidth = 3;
+  g.beginPath(); g.arc(64, 64, 56, 0, TAU); g.stroke(); g.lineWidth = 2; g.beginPath(); g.arc(64, 64, 44, 0, TAU); g.stroke();
+  for (let i = 0; i < 8; i++) { const a = i / 8 * TAU; g.save(); g.translate(64 + Math.cos(a) * 50, 64 + Math.sin(a) * 50); g.rotate(a); g.beginPath(); g.moveTo(-4, -4); g.lineTo(4, 0); g.lineTo(-4, 4); g.moveTo(0, -5); g.lineTo(0, 5); g.stroke(); g.restore(); }
+  g.beginPath(); for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + i * 4 * Math.PI / 5; g.lineTo(64 + Math.cos(a) * 40, 64 + Math.sin(a) * 40); } g.closePath(); g.stroke();
+  runeTex = new T.CanvasTexture(c); return runeTex;
+}
+let fogTex = null;
+function fogTexture() {
+  if (fogTex) return fogTex;
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+  for (let i = 0; i < 14; i++) { const x = 20 + Math.random() * 88, y = 20 + Math.random() * 88, r = 18 + Math.random() * 26, gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(255,255,255,.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); }
+  fogTex = new T.CanvasTexture(c); return fogTex;
+}
+function floorMark(kind, x, z, s, c) {
+  let m;
+  if (kind === 'crack') m = flat(new T.PlaneGeometry(s, s), new T.MeshBasicMaterial({ map: crackTexture(), transparent: true, opacity: .55, depthWrite: false, fog: false }));
+  else if (kind === 'rune') { m = flat(new T.PlaneGeometry(s, s), new T.MeshBasicMaterial({ map: runeTexture(), color: c, transparent: true, opacity: .32, blending: T.AdditiveBlending, depthWrite: false, fog: false })); const mm = m.material; decorAnim.push(t => { mm.opacity = .22 + .12 * Math.sin(t * 1.5 + x); }); }
+  else if (kind === 'pool') m = flat(new T.CircleGeometry(s / 2, 14), decalMat(c, .28));
+  else if (kind === 'lava') { m = flat(new T.PlaneGeometry(.09, s), pb(0xff5a1a)); m.add(halo(0xff6a1a, s * .9, .18)); }
+  m.position.set(x, .025, z); m.rotation.z = propRand() * TAU; roomGroup.add(m);
+}
+function fogLayer(c) {
+  const mat = new T.MeshBasicMaterial({ map: fogTexture(), color: c, transparent: true, opacity: .1, depthWrite: false, fog: false });
+  for (let i = 0; i < 3; i++) {
+    const m = flat(new T.PlaneGeometry(AX * 1.6, AZ * 1.6), mat); m.position.set(prr(-AX * .4, AX * .4), .25 + i * .18, prr(-AZ * .4, AZ * .4)); m.renderOrder = 5; roomGroup.add(m);
+    const ox = m.position.x, oz = m.position.z, sp = prr(.05, .12), ph = prr(0, TAU); decorAnim.push(t => { m.position.x = ox + Math.sin(t * sp + ph) * 1.2; m.position.z = oz + Math.cos(t * sp * .8 + ph) * .9; });
+  }
+}
+const BIOME_DECOR = [
+  { tall: ['sarc', 'statue', 'grave', 'grave', 'urnset'], low: ['bones', 'candles', 'candles', 'urn'], wall: 'chain', marks: [['crack', 6], ['pool', 2, 0x0a1418]], fog: 0x8090b0, web: true },
+  { tall: ['brazier', 'anvil', 'spikes', 'slag'], low: ['slag', 'bones', 'brazierS'], wall: 'chain', marks: [['lava', 6], ['crack', 4]], fog: 0xff8a50 },
+  { tall: ['ice', 'fstatue', 'ice', 'drift'], low: ['drift', 'ice', 'bones'], wall: 'icicle', marks: [['pool', 3, 0x9fd8ff], ['crack', 3]], fog: 0xcfe8ff },
+  { tall: ['vshards', 'varch', 'vshards', 'obeliskV'], low: ['vshardsL', 'bones'], wall: 'chain', marks: [['rune', 2, 0xb06aff], ['crack', 3]], fog: 0x9a6ad0 },
+  { tall: ['candelabra', 'obelisk', 'statue', 'candelabra'], low: ['bones', 'candles', 'bones'], wall: 'banner', marks: [['rune', 2, 0xff3b4a], ['crack', 4]], fog: 0x705060 }
+];
+function buildProp(kind, g, st) {
+  const stone = st.stone || 0x3b3d4a;
+  switch (kind) {
+    case 'sarc': sarcophagus(g, stone); return .75;
+    case 'statue': brokenStatue(g, stone); return .45;
+    case 'grave': gravestone(g, stone); return .3;
+    case 'urnset': urn(g); const u2 = new T.Group(); u2.position.set(.3, 0, .15); u2.scale.setScalar(.7); g.add(u2); urn(u2); candles(g, 2); return .3;
+    case 'urn': urn(g); return 0;
+    case 'bones': bones(g); return 0;
+    case 'candles': candles(g, 3 + Math.floor(propRand() * 3)); return 0;
+    case 'brazier': brazier(g); return .3;
+    case 'brazierS': g.scale.setScalar(.7); brazier(g); return 0;
+    case 'anvil': anvil(g); return .35;
+    case 'spikes': spikes(g, 0x2a201c); return .4;
+    case 'slag': slag(g); return 0;
+    case 'ice': iceCluster(g); return .35;
+    case 'fstatue': frozenStatue(g, stone); return .45;
+    case 'drift': snowDrift(g); return 0;
+    case 'vshards': voidShards(g); return .2;
+    case 'vshardsL': g.scale.setScalar(.6); voidShards(g); return 0;
+    case 'varch': voidArch(g, stone); return .4;
+    case 'obeliskV': obelisk(g, 0xb06aff); return .3;
+    case 'candelabra': candelabra(g); return .2;
+    case 'obelisk': obelisk(g, 0xff3b4a); return .3;
+  }
+  return 0;
+}
+function decorRoom(room) {
+  decorAnim.length = 0;
+  if (!roomGroup || room.type === 'shop') return;
+  const si = stageIdx() % 5, D = BIOME_DECOR[si], st = stage(), low = qLv >= 2, decor = new T.Group(); roomGroup.add(decor);
+  propRand = seeded((room.gx + 7) * 7919 + (room.gz + 7) * 104729 + runStage * 31337);
+  const doorZone = (x, z) => (Math.abs(x) < 1.8 && (room.doors.includes('N') && z < -AZ + 2 || room.doors.includes('S') && z > AZ - 2)) || (Math.abs(z) < 1.8 && (room.doors.includes('W') && x < -AX + 2 || room.doors.includes('E') && x > AX - 2));
+  const torchZone = (x, z) => [[-AX * .55, -AZ], [AX * .55, -AZ], [-AX, -AZ * .55], [-AX, AZ * .55]].some(([tx, tz]) => Math.hypot(x - tx, z - tz) < 1.1);
+  const centerUsed = room.type === 'exit' || room.type === 'boss' || room.type === 'shrine' || room.type === 'chaos' || room.altar;
+  const used = pillars.map(p => ({ x: p.x, z: p.z, r: p.r + .4 }));
+  const free = (x, z, r) => !doorZone(x, z) && used.every(u => Math.hypot(x - u.x, z - u.z) > u.r + r) && !(centerUsed && Math.hypot(x, z) < 2.6);
+  const place = (kind, x, z, rot) => {
+    const g = new T.Group(), sw = new T.Group(); g.position.set(x, 0, z); g.rotation.y = rot; g.add(sw);
+    const r = buildProp(kind, sw, st) * 1.3; sw.scale.multiplyScalar(1.3); decor.add(g);
+    used.push({ x, z, r: Math.max(.45, r + .2) }); if (r) pillars.push({ x, z, r });
+  };
+  // tall pieces line the back walls, where they never hide the fight
+  const nTall = Math.round((AX + AZ) * (low ? .45 : .8));
+  for (let i = 0, tries = 0; i < nTall && tries < 60; tries++) {
+    const back = propRand() < .5, x = back ? prr(-AX + .9, AX - .9) : -AX + prr(.7, 1.1), z = back ? -AZ + prr(.7, 1.1) : prr(-AZ + .9, AZ - .9);
+    if (torchZone(x, z) || !free(x, z, .55)) continue;
+    place(D.tall[Math.floor(propRand() * D.tall.length)], x, z, back ? prr(-.3, .3) : Math.PI / 2 + prr(-.3, .3)); i++;
+  }
+  // low clutter can sit anywhere along the edges, the front walls included
+  const nLow = Math.round((AX + AZ) * (low ? .5 : .95));
+  for (let i = 0, tries = 0; i < nLow && tries < 80; tries++) {
+    const side = Math.floor(propRand() * 4), t = propRand();
+    const x = side === 0 ? -AX + .6 : side === 1 ? AX - .6 : prr(-AX + .6, AX - .6), z = side === 2 ? -AZ + .6 : side === 3 ? AZ - .6 : prr(-AZ + .6, AZ - .6);
+    if (!free(x, z, .35)) continue;
+    place(D.low[Math.floor(propRand() * D.low.length)], x + prr(-.2, .2), z + prr(-.2, .2), prr(0, TAU)); i++;
+  }
+  // wall dressing on the tall back walls
+  for (let i = 0; i < (low ? 2 : 4); i++) {
+    const onN = i % 2 === 0, x = onN ? prr(-AX + 1, AX - 1) : -AX + .06, z = onN ? -AZ + .06 : prr(-AZ + 1, AZ - 1);
+    if (doorZone(x, z) || torchZone(x, z)) continue;
+    const g = new T.Group(); g.position.set(x, D.wall === 'banner' ? 2.05 : 2.2, z); g.rotation.y = onN ? 0 : Math.PI / 2;
+    if (D.wall === 'chain') chainDown(g, prr(.8, 1.6));
+    else if (D.wall === 'banner') wallBanner(g, [0x5a1418, 0x3a1a3a, 0x2a2a3a][i % 3]);
+    else if (D.wall === 'icicle') { const im = pm(0xcfeeff, { transparent: true, opacity: .85, emissive: 0x1a3a50 }); for (let k = 0; k < 6; k++) { const c = pmesh(pg('icl', () => new T.ConeGeometry(.05, .5, 5)), im, prr(-.5, .5), -prr(0, .25), .05, g); c.rotation.x = Math.PI; c.scale.y = prr(.5, 1.4); } }
+    decor.add(g);
+  }
+  // cobwebs in the far corners
+  if (D.web) [[-AX + .02, -AZ + .02]].forEach(([x, z]) => {
+    const w = pmesh(pg('web', () => { const s = new T.Shape(); s.moveTo(0, 0); s.lineTo(1.2, 0); s.quadraticCurveTo(.5, -.5, 0, -1.2); s.closePath(); return new T.ShapeGeometry(s); }), new T.MeshBasicMaterial({ color: 0xd8d8e0, transparent: true, opacity: .12, side: T.DoubleSide, depthWrite: false }), x, 2.6, z, roomGroup);
+    w.rotation.set(0, -Math.PI / 4, 0);
+  });
+  // floor marks
+  for (const [kind, n, c] of D.marks) for (let i = 0; i < (low ? Math.ceil(n / 2) : n); i++) {
+    const x = prr(-AX + 1, AX - 1), z = prr(-AZ + 1, AZ - 1);
+    if (centerUsed && Math.hypot(x, z) < 2) continue;
+    floorMark(kind, x, z, kind === 'rune' ? prr(2, 3) : kind === 'lava' ? prr(.6, 1.6) : prr(1, 2.4), c);
+  }
+  if (!low) fogLayer(D.fog);
+  propRand = Math.random;
+  mergeStatic(decor);
+}
+// fold every static prop mesh into one draw per material, so a dressed room stays cheap on phones
+function mergeStatic(root) {
+  root.updateMatrixWorld(true);
+  const inv = new T.Matrix4().copy(root.matrixWorld).invert(), buckets = new Map(), kill = [], mm = new T.Matrix4();
+  root.traverse(o => {
+    if (!o.isMesh || o.userData.dyn || (o.material && (o.material.map || o.material.transparent))) return;
+    let p = o.parent, dyn = false; while (p && p !== root) { if (p.userData.dyn) dyn = true; p = p.parent; } if (dyn) return;
+    const key = o.material.uuid + (o.castShadow ? 's' : '');
+    let g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    g.deleteAttribute('uv'); if (g.attributes.uv2) g.deleteAttribute('uv2');
+    if (!g.attributes.normal) g.computeVertexNormals();
+    g.applyMatrix4(mm.multiplyMatrices(inv, o.matrixWorld));
+    if (!buckets.has(key)) buckets.set(key, { mat: o.material, shadow: o.castShadow, geos: [] });
+    buckets.get(key).geos.push(g); kill.push(o);
+  });
+  kill.forEach(o => o.parent.remove(o));
+  for (const { mat, shadow, geos } of buckets.values()) {
+    let n = 0; geos.forEach(g => n += g.attributes.position.count);
+    const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3); let off = 0;
+    geos.forEach(g => { pos.set(g.attributes.position.array, off * 3); nor.set(g.attributes.normal.array, off * 3); off += g.attributes.position.count; g.dispose(); });
+    const bg = new T.BufferGeometry(); bg.setAttribute('position', new T.BufferAttribute(pos, 3)); bg.setAttribute('normal', new T.BufferAttribute(nor, 3));
+    const m = new T.Mesh(bg, mat); m.castShadow = shadow; m.receiveShadow = true; root.add(m);
+  }
+}
+function updateDecor(time) { for (const f of decorAnim) f(time); }
+
+// ----- enemy presence -----
+let contactTex = null;
+function contactShadow(e) {
+  if (!contactTex) { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, 'rgba(0,0,0,.7)'); r.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); contactTex = new T.CanvasTexture(c); }
+  const m = flat(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: contactTex, transparent: true, depthWrite: false, fog: false }));
+  m.scale.setScalar(e.r * 3.2); m.position.y = .02; e.model.root.add(m);
+  if (e.def.boss) {
+    const c = (stage().gcol && stage().gcol.glow) || 0xff5a3a, ring = flat(new T.RingGeometry(e.r * 1.5, e.r * 1.65, 40), decalMat(c, .45));
+    ring.position.y = .03; e.model.root.add(ring); e.aura = ring;
+  }
 }
 
 /* ---------- game state ---------- */
@@ -4322,6 +4784,7 @@ function hitEnemy(e, dmg, kb, heavy, from, proc = true) {
   e.kb.addScaledVector(dir, kb * (e.def.boss ? .12 : e.def.poise && !heavy ? .3 : 1) * (e.armor > 0 ? .15 : 1));
   pop(e.pos, d, stunned || crit ? 'crit' : '');
   sfx('hit', crit || stunned);
+  hitVfx(e, dir, crit, heavy, (atk || sp) ? eCol(0xffe0a0) : 0xffd27a);
   burst(e.pos.clone().setY(.8), stunned ? 0xffd23f : (atk || sp) ? eCol(0xffd27a) : 0xffd27a, heavy ? 12 : 7, 5, 3);
   e.killedBy = HS;
   if (!SOFT) { hitstop = Math.max(hitstop, heavy ? .09 : .05); shake = Math.max(shake, heavy ? .22 : .1); }
@@ -4349,6 +4812,7 @@ function hitEnemy(e, dmg, kb, heavy, from, proc = true) {
 function killEnemy(e) {
   e.dead = true; e.state = 'dead'; e.t = 0; hideTele(e); kills++;
   sfx(e.def.boss ? 'boom' : 'kill', true);
+  if (e.def.boss && cur && cur.type === 'boss') bossFall(e);
   dropLoot(e);
   sigOnKill(e);
   if (e.type === 'boss') achieve('warden'); if (e.def.ai === 'reaper') achieve('reaper'); if (e.type === 'final') achieve('final');
@@ -4499,6 +4963,7 @@ function spawnEnemy(type, at) {
   model.root.position.copy(e.pos);
   if (def.tint) { const tc = new T.Color(def.tint); model.mats.forEach(m => m.color.lerp(tc, .55)); }
   if (def.scale) model.root.scale.multiplyScalar(def.scale);
+  model.root.scale.multiplyScalar(def.boss ? 1.08 : 1.12); contactShadow(e);
   if (elite) {
     e.elite = true; model.root.scale.multiplyScalar(1.15);
     const ak = Object.keys(AFFIX), af = ak[Math.floor(Math.random() * ak.length)], ac = AFFIX[af].c;
@@ -5065,6 +5530,7 @@ function animateEnemy(e, dt, time) {
     }
   }
 
+  teleFx(e); if (e.aura) e.aura.material.opacity = .3 + .2 * Math.sin(time * 3);
   if (e.flash > 0) { const v = e.flash / .12 * .9; setEmissive(md.mats, v, v, v); }
   else if (e.state === 'windup' || (e.ai === 'boss' && (e.state === 'slam' || e.state === 'chargeWind' || e.state === 'roar')) || (e.ai === 'guardian' && (e.state === 'volley' || e.state === 'erupt' || e.state === 'roar')) || (e.ai === 'reaper' && e.state === 'reapWind') || (e.ai === 'final' && ['volley', 'erupt', 'ring', 'spiral', 'shift'].includes(e.state))) { const p = clamp(e.t / e.def.windup, 0, 1), v = .2 + .45 * p + .1 * Math.sin(time * 30); setEmissive(md.mats, v * 1.3, v * .12, v * .08); }
   else if (e.state === 'stun' && e.frozen) setEmissive(md.mats, .15, .38, .55);
@@ -5445,6 +5911,7 @@ function updateTransition(real) {
 let introPending = false, stageCardTimer = 0;
 function stageCard(sub) {
   const c = $('stageCard'), n = (stageIdx() % 5) + 1, bt = STAGE_BOSS[runStage - 1] || 'guardian';
+  c.classList.remove('clear');
   c.querySelector('img').src = `art/stage/${n}.webp`;
   c.querySelector('small').textContent = `Stage ${runStage} of 5`;
   c.querySelector('b').textContent = stageName();
@@ -5454,7 +5921,7 @@ function stageCard(sub) {
 function nextFloor() {
   sfx('descend');
   runStage++;
-  genFloor(runStage);
+  genFloor(runStage); markStage();
   enterRoom(rk(0, 0), null);
   P.rerollsLeft = Math.max(P.rerollsLeft, 1);
   P.oil = Math.min(100, P.oil + 40);
@@ -5479,13 +5946,13 @@ function roomCleared() {
     banner(f > .7 ? 'Trove claimed, with a bonus item' : 'Trove claimed', `${Math.round(f * 100)}% of the treasure`);
   }
   buildDoorTags();
-  if (cur.type === 'boss') { banner(`${bossName(cur.boss)} falls`, cur.boss === 'guardian' ? 'A way deeper opens' : ''); const h = P.max - P.hp; if (h > 0) { P.hp = P.max; pop(P.pos, '+' + Math.ceil(h), 'info'); } }
+  if (cur.type === 'boss') { stageClear(cur.boss); const h = P.max - P.hp; if (h > 0) { P.hp = P.max; pop(P.pos, '+' + Math.ceil(h), 'info'); } }
   else {
     const h = Math.min(10, P.max - P.hp); if (h > 0) { P.hp += h; pop(P.pos, '+' + Math.ceil(h), 'info'); }
     if (cur.type === 'exit') banner('The way down is open');
   }
   if (cur.type === 'exit' || cur.type === 'boss') {
-    cur.stairsOpen = true; if (cur.type === 'boss') relicT = 1.1;
+    cur.stairsOpen = true; if (cur.type === 'boss') relicT = 3.5;
     if (stairsObj) stairsObj.visible = true;
     propLight.color.set(0xffa040); propLight.position.set(0, .9, 0); propLight.intensity = 1.5;
     burst(new T.Vector3(0, .2, 0), 0xffb347, 20, 4, 3);
@@ -5497,6 +5964,7 @@ function updateRoom(dt) {
   for (let i = spawnQueue.length - 1; i >= 0; i--) if (gameTime >= spawnQueue[i].at) { spawnEnemy(spawnQueue[i].type, spawnQueue[i].pos); spawnQueue.splice(i, 1); }
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
+    if (e.dead && e.def.boss && cur && cur.type === 'boss') { bossDissolve(e, dt); if (e.t > 2.4) { removeEnemy(e); enemies.splice(i, 1); } continue; }
     if (e.dead && e.t > 1.1) { removeEnemy(e); enemies.splice(i, 1); }
   }
   for (const d of doorObjs) {
@@ -5514,8 +5982,9 @@ function updateRoom(dt) {
       }
     }
   }
-  if (!choosing && choiceQ.length && !trans && !P.dead) choiceQ.shift()();
-  if (!choosing && relicT <= 0 && P.pendingLv > 0 && !roomLocked && !trans && !P.dead && !enemies.some(x => !x.dead)) offerLevel();
+  choiceGap = Math.max(0, choiceGap - dt);
+  if (!choosing && choiceGap <= 0 && choiceQ.length && !trans && !P.dead) choiceQ.shift()();
+  if (!choosing && choiceGap <= 0 && relicT <= 0 && P.pendingLv > 0 && !roomLocked && !trans && !P.dead && !enemies.some(x => !x.dead)) offerLevel();
   if (P.dead || !cur) return;
   if (cur.trove && roomLocked && troveT > 0) troveT = Math.max(0, troveT - dt);
   if (roomLocked && !spawnQueue.length && enemies.every(e => e.dead)) {
@@ -5524,7 +5993,7 @@ function updateRoom(dt) {
   }
   if (cur.stairsOpen) {
     if (Math.random() < .15) burst(new T.Vector3(rand(-.6, .6), .1, rand(-.6, .6)), 0xffb347, 1, .4, 2.5);
-    if (!trans && Math.hypot(P.pos.x, P.pos.z) < .75) startTransition('down');
+    if (!trans && relicT <= 0 && !choiceQ.length && !choosing && Math.hypot(P.pos.x, P.pos.z) < .75) startTransition('down');
   }
   if (cur.type === 'shrine' && !cur.used && Math.hypot(P.pos.x, P.pos.z) < 1.9) {
     cur.used = true; sfx('heal');
@@ -5593,7 +6062,7 @@ function startGame() {
   $('camp').classList.remove('on');
   kills = 0; gameTime = 0; hitstop = 0; shake = 0; floor = 1; hpScale = 1; trans = null; runStage = 1;
   CODEX.runs = (CODEX.runs || 0) + 1; saveCodex();
-  genFloor(1); enterRoom(rk(0, 0), null);
+  genFloor(1); enterRoom(rk(0, 0), null); markStage();
   playing = true;
   $('menu').classList.remove('on'); $('over').classList.remove('on');
   relicT = 0;
@@ -5714,7 +6183,7 @@ function loop() {
   }
   animateHero(real * (dt > 0 || !playing ? 1 : 0), time);
   for (const e of enemies) animateEnemy(e, dt, time);
-  updateFloats(real);
+  updateFloats(real); updateSparks(real); updateDecals(real); updateDecor(time); animStairs(time); descendPrompt();
   updateMotes(real, time);
   audioTick(real);
 
@@ -5726,6 +6195,8 @@ function loop() {
   shake *= Math.exp(-9 * real);
   cam.position.copy(camTarget).add(CAM_OFF);
   cam.position.x += (Math.random() - .5) * sk; cam.position.y += (Math.random() - .5) * sk; cam.position.z += (Math.random() - .5) * sk;
+  camPunch = Math.max(0, camPunch - real * .7);
+  { const zt = (innerWidth >= innerHeight ? 1.12 : 1.07) * (1 + .2 * Math.min(1, camPunch)); if (Math.abs(cam.zoom - zt) > .0005) { cam.zoom = lerp(cam.zoom, zt, Math.min(1, real * 6)); cam.updateProjectionMatrix(); } }
   cam.lookAt(camTarget.x, camTarget.y + .4, camTarget.z);
   moon.position.set(camTarget.x + 6, 14, camTarget.z + 3); moon.target.position.copy(camTarget);
 

@@ -289,6 +289,11 @@ body.is-touch #descend{bottom:calc(env(safe-area-inset-bottom,0px) + 200px)}
 @media (max-width:560px){#evoReveal{flex-direction:column;text-align:center;gap:12px}}
 @keyframes evoIn{0%{opacity:0;transform:scale(1.08)}12%{opacity:1;transform:scale(1)}82%{opacity:1}100%{opacity:0}}
 .pop.crit{font-size:30px;color:#ffd23f;text-shadow:0 2px 0 rgba(0,0,0,.8),0 0 12px rgba(255,140,40,.8)}
+.pb.ic{background-size:78% 78%!important;background-position:center!important;background-repeat:no-repeat!important;font-size:22px!important;text-shadow:0 0 6px #000,0 0 3px #000,0 0 2px #000}
+#bAtk.ic{background-size:74% 74%!important}
+.pb.ic.cool{opacity:1;filter:grayscale(.75) brightness(.7)}
+body.is-touch #toasts{right:auto;left:50%;transform:translateX(-50%);top:58px;align-items:center}
+.ski{width:34px;height:34px;vertical-align:-11px;margin-right:6px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}
 </style>
 </head>
 <body>
@@ -3667,7 +3672,7 @@ function restyleHero() {
   scene.remove(hero.root);
   hero = CLASSES[P.cls].build(P.klass); hero.cls = P.cls; inkifyHero(hero);
   hero.root.position.copy(pos); hero.root.rotation.y = ry; scene.add(hero.root);
-  const C = CLASSES[P.cls]; $('bBlock').textContent = KL[P.klass].btn || C.btn[2];
+  const C = CLASSES[P.cls]; $('bBlock').textContent = KL[P.klass].btn || C.btn[2]; setSkillIcons(P.cls, P.klass);
 }
 function inkifyHero(h) { if (typeof inkify === 'function') inkify(h.root); }
 
@@ -3927,7 +3932,7 @@ function evoReveal(k, first) {
   el.querySelector('img').src = PORTRAIT[P.klass];
   el.querySelector('small').textContent = first ? 'A new path, recorded in your Codex' : 'You evolve';
   el.querySelector('b').textContent = k.name;
-  el.querySelector('span').innerHTML = `New special: <em>${k.sig}</em>`;
+  el.querySelector('span').innerHTML = `<img class="ski" src="art/skills/${P.klass}.webp" alt="">New special: <em>${k.sig}</em>`;
   el.style.setProperty('--c', k.color);
   el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
   flashScreen(k.color, .5, 1); slowT = Math.max(slowT, .9); camPunch = Math.max(camPunch, .6);
@@ -4316,6 +4321,14 @@ function contactShadow(e) {
   }
 }
 
+// ----- skill button art -----
+function setSkillIcons(cls, klass) {
+  const C = CLASSES[cls]; if (!C) return;
+  const set = (id, key, name) => { const b = $(id); if (!b) return; b.style.backgroundImage = `url(art/skills/${key}.webp)`; b.classList.add('ic'); b.setAttribute('aria-label', name); b.title = name; };
+  set('bAtk', 'atk_' + cls, C.btn[0]); set('bRoll', cls === 'mage' ? 'blink' : 'roll', C.btn[1]); set('bBlock', klass, (KL[klass] && KL[klass].btn) || C.btn[2]);
+  $('bAtk').textContent = ''; $('bRoll').textContent = ''; $('bBlock').textContent = '';
+}
+
 /* ---------- game state ---------- */
 const TYPES = {
   goblin: { build: buildGoblin, hp: 40, r: .36, speed: 3.3, windup: .42, recover: .55, poise: false, turn: 9 },
@@ -4367,7 +4380,7 @@ function setHero(c) {
   if (P) { hero.root.position.copy(P.pos); hero.root.rotation.y = P.facing; }
   try { localStorage.setItem('tb-hero', c); } catch (e) {}
   const C = CLASSES[c];
-  $('bAtk').textContent = C.btn[0]; $('bRoll').textContent = C.btn[1]; $('bBlock').textContent = C.btn[2];
+  $('bAtk').textContent = C.btn[0]; $('bRoll').textContent = C.btn[1]; $('bBlock').textContent = C.btn[2]; setSkillIcons(c, KIT_BASE[c]);
   $('stF').style.background = C.res;
   $('howTo').textContent = isTouch ? C.tch : C.kbd;
   document.querySelectorAll('.cls').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.c === c)));
@@ -5790,7 +5803,7 @@ function renderSheet() {
   if (sit.length) stats += `<h3>Class defences</h3>` + sit.map(([a, b]) => `<div class="sh-row"><b>${a}</b><span>${b}</span></div>`).join('');
 
   let cls = `<div class="sh-top"><img class="sh-pt" src="${PORTRAIT[P.klass]}" alt=""><div class="sh-head" style="--c:${k.color}"><b>${k.name}</b><small>${['Base class', 'Specialised', 'Final class'][k.tier]} · ${P.line.map(id => KL[id].name).join(' › ')} · Level ${P.lv} · Stage ${runStage} of 5</small>`;
-  cls += k.tier ? `<p><em>${k.sig}.</em> ${k.sigD}</p><p><em>${k.pas}.</em> ${k.pasD}</p>` : `<p>${k.desc}</p>`;
+  cls += k.tier ? `<p><img class="ski" src="art/skills/${P.klass}.webp" alt=""><em>${k.sig}.</em> ${k.sigD}</p><p><em>${k.pas}.</em> ${k.pasD}</p>` : `<p>${k.desc}</p>`;
   cls += `</div></div><div class="sh-stats">${[['Health', `${Math.ceil(P.hp)} / ${P.max}`], ['Torch oil', `${Math.round(P.oil)}%`], ['Gold', P.gold], ['Kills', kills]].map(([a, v]) => `<div><small>${a}</small><b>${v}</b></div>`).join('')}</div>`;
   if (kids.length) {
     cls += `<h3>Evolution</h3><p class="sh-note">Next evolution after the ${runStage <= 1 ? 'Warden (stage 1)' : 'Reaper (stage 3)'}. ${need} affinity opens a path.</p>`;
@@ -6147,7 +6160,7 @@ function updateHUD() {
   setW('oilF', P.oil + '%');
   $('oilBar').classList.toggle('low', P.oil < 25);
   const C = CLASSES[P.cls], sb = $('bBlock');
-  const label = C.skillCd && P.skillCd > 0 ? String(Math.ceil(P.skillCd)) : (KL[P.klass].btn || C.btn[2]);
+  const label = C.skillCd && P.skillCd > 0 ? String(Math.ceil(P.skillCd)) : sb.classList.contains('ic') ? '' : (KL[P.klass].btn || C.btn[2]);
   if (sb.textContent !== label) sb.textContent = label;
   sb.classList.toggle('cool', !!C.skillCd && P.skillCd > 0);
 }

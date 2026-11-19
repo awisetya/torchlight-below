@@ -257,6 +257,7 @@ html,body{touch-action:none;overscroll-behavior:none;-webkit-text-size-adjust:10
 button{touch-action:manipulation}
 @media (max-width:560px){.sh-stats{grid-template-columns:repeat(2,1fr)}}
 .pop.heal{color:#7fe08a}
+#buildHud{display:flex;gap:6px;margin:3px 0 0 2px;flex-wrap:wrap}#buildHud .bh{position:relative;font:700 10px/1 system-ui,sans-serif;color:#fff;background:rgba(0,0,0,.45);border-radius:6px;padding:3px 6px 5px;overflow:hidden}#buildHud .fr b{color:#ff9ad0}#buildHud .fr i{position:absolute;left:0;bottom:0;height:2px;background:#e07aff}#buildHud .tr b{color:#cfd6e0}
 #soulPips{display:flex;gap:5px;margin:3px 0 0 2px}#soulPips i{width:11px;height:11px;border-radius:50%;border:1.5px solid #8fe04a;background:rgba(0,0,0,.35)}#soulPips i.on{background:#8fe04a;box-shadow:0 0 6px #8fe04a}#soulPips i.rs{border-color:#ffd27a;box-shadow:0 0 6px #ffd27a}
 #menu,#camp{background:#0b0d14 url(art/menu_bg.webp) center/cover no-repeat}
 #menu{flex-direction:column;gap:4px;overflow:auto;justify-content:safe center}
@@ -330,7 +331,7 @@ body:not(.is-touch) #buyBtn:disabled::after{display:none}
 
 <div class="hud">
   <div class="bars">
-    <div class="bar"><i id="hpF"></i><span id="hpT">100 / 100</span></div><div id="soulPips" style="display:none"></div>
+    <div class="bar"><i id="hpF"></i><span id="hpT">100 / 100</span></div><div id="soulPips" style="display:none"></div><div id="buildHud"></div>
     <div class="bar st" id="stBar"><i id="stF"></i></div>
     <div class="oil"><span class="flame" aria-hidden="true"></span><div class="bar oilbar" id="oilBar" title="Torch oil"><i id="oilF"></i></div></div>
     <div class="lvl" id="lvl"><b id="lvT">Lv 1</b><div class="bar xpbar" title="Experience"><i id="xpF"></i></div></div>
@@ -1199,8 +1200,8 @@ const stageIdx = () => runStage - 1;
 const stage = () => STAGES[stageIdx() % STAGES.length];
 const stageName = () => { const c = Math.floor(stageIdx() / STAGES.length); return stage().name + (c ? ` ${['', 'II', 'III', 'IV', 'V'][c] || c + 1}` : ''); };
 const floorInStage = n => ((n - 1) % 10) + 1;
-const eLevelHp = () => (1 + (floor - 1) * .2 + .012 * (floor - 1) * (floor - 1)) * Math.pow(1.03, Math.max(0, floor - 14));
-const eLevelDmg = () => (1 + (floor - 1) * .09) * Math.pow(1.04, Math.max(0, floor - 14));
+const eLevelHp = () => 1.25 * Math.pow(1.14, floor - 1);
+const eLevelDmg = () => 1.2 * Math.pow(1.07, floor - 1);
 const bossName = t => (t === 'final' ? 'The Lightless One' : t === 'guardian' ? stage().guardian : t === 'reaperboss' || t === 'reaper' ? 'The Reaper' : 'The Warden');
 function applyTheme() {
   const st = stage();
@@ -4866,7 +4867,8 @@ function updateRecs(dt) { updateHazards(dt); for (const f of REC_TICK) f(dt); }
 /* ---------- Mage tree (Patch B1) ---------- */
 const specRef = () => 10 * spPow() * sigPow() * apMul(); // your special's hit after multipliers (rule A base)
 // Kindle: burning enemies explode on death and spread Ember
-rework('kindle', lv => `Burning enemies explode on death for ${pct(rkv([.85, 1.15, 1.45], lv))} of your Attack Power and set nearby enemies alight.`);
+rework('kindle', lv => `Your bolts set enemies Burning. Burning enemies explode on death for ${pct(rkv([.85, 1.15, 1.45], lv))} of your Attack Power and set nearby enemies alight.`);
+onRec('hit', 'kindle', c => { if (P.cls === 'mage' && !c.e.dead && !(c.e.burn && c.e.burn.left > 0)) ignite(c.e, 8); }, ['attack']);
 onRec('kill', 'kindle', (c, lv) => {
   const e = c.e; if (!e.burn || !(e.burn.left > 0)) return;
   const R = 2.5 + rkv([0, .25, .5], lv);
@@ -4881,14 +4883,16 @@ onRec('kill', 'rime', (c, lv) => {
   for (let i = 0; i < 5; i++) zap(c.e.pos, ts[i % ts.length], AP() * rkv([.55, .7, .85], lv), 'rime', 0xc8f4ff, { delay: .05 + i * .04, y: .8 });
 });
 // Static: lightning on a Burning or Frozen enemy arcs once more
-rework('static', lv => `Lightning that strikes a Burning or Frozen enemy arcs to another enemy for ${pct(rkv([.35, .5, .65], lv))} of the strike.`);
+rework('static', lv => `Your bolts and lightning that hit a Burning or Frozen enemy arc to another enemy for ${pct(rkv([.35, .5, .65], lv))} of the hit.`);
+onRec('hit', 'static', (c, lv) => { const e = c.e; if (P.cls !== 'mage' || e.dead || (!(e.burn && e.burn.left > 0) && !(e.frozen && e.state === 'stun')) || !readyOn(e, 'static', .5)) return; const t = nearby(e.pos, 4.5, e)[0]; if (t) zap(e.pos, t, c.dmg * rkv([.35, .5, .65], lv), 'static', 0xfff27a, { y: .9 }); }, ['attack']);
 onRec('lightningHit', 'static', (c, lv) => {
   const e = c.e; if (!(e.burn && e.burn.left > 0) && !(e.frozen && e.state === 'stun')) return;
   const t = nearby(e.pos, 4.5, new Set([e, c.from]))[0]; if (!t || !e.lastHit) return;
   zap(e.pos, t, e.lastHit.pre * rkv([.35, .5, .65], lv), 'static', 0xfff27a, { y: .9 });
 });
 // Soulguard Orbit: an orbiting spirit eats one enemy projectile, then bursts
-rework('sward', lv => `Each orbiting spirit can catch one enemy projectile, then bursts for ${pct(rkv([1.1, 1.4, 1.7], lv))} of your Attack Power.`);
+rework('sward', lv => `Dodging summons an orbiting spirit (up to 3). Each orbiting spirit can catch one enemy projectile, then bursts for ${pct(rkv([1.1, 1.4, 1.7], lv))} of your Attack Power.`);
+onRec('dodgeEnd', 'sward', () => { if (orbs.filter(o => o.t > 0).length < 3) spawnOrbs(1, 8, 1.15, 9, 0x9fe3ff); });
 REC_TICK.push(() => {
   const lv = recLv('sward'); if (!lv || !orbs.length) return;
   for (const o of orbs) {
@@ -4903,7 +4907,8 @@ REC_TICK.push(() => {
   }
 });
 // Soul Tether: every 3rd summon hit heals you and empowers the next summon hit
-rework('tether', lv => `Every 3rd hit by your summons heals you ${rkv([1.5, 1.5, 2], lv)}% of your health and makes their next hit ${pct(rkv([.25, .3, .35], lv))} stronger.`);
+rework('tether', lv => `If you have no summons, your special calls a spirit fox for 6 seconds. Every 3rd hit by your summons heals you ${rkv([1.5, 1.5, 2], lv)}% of your health and makes their next hit ${pct(rkv([.25, .3, .35], lv))} stronger.`);
+onRec('special', 'tether', () => { if (!minions.length) spawnMinion('fox', P.pos.clone().add(new T.Vector3(1, 0, 0)), 6); });
 BUS.on('summonHit', () => {
   const lv = recLv('tether'); if (!lv || !count('tether', 3) || !ready('tether', 1)) return;
   healP(P.max * rkv([.015, .015, .02], lv)); P.tetherEmp = rkv([.25, .3, .35], lv); burst(P.pos.clone().setY(1), 0x5fd0c0, 8, 3, 2);
@@ -4922,9 +4927,9 @@ onRec('special', 'font', (c, lv) => {
   for (let i = 0; i < 2; i++) zap(P.pos, ts[i % ts.length], specRef() * rkv([.4, .5, .6], lv), 'font', 0xb69cff, { delay: .08 + i * .08, w: .14 });
 });
 // Astral Flood (Mastery): every 3rd special is followed by two smaller echoes
-rework('c_arch', () => 'Every 3rd nova is followed by two echoes, at 60% and then 40% strength, 0.4 seconds apart.');
+rework('c_arch', () => 'Every 2nd nova is followed by two echoes, at 60% and then 40% strength, 0.4 seconds apart.');
 onRec('special', 'c_arch', () => {
-  if (P.cls !== 'mage' || !count('c_arch', 3)) return;
+  if (P.cls !== 'mage' || !count('c_arch', 2)) return;
   later(.4, () => { if (!P.dead) withTag('triggered', 'c_arch', () => novaAt(.6, true)); });
   later(.8, () => { if (!P.dead) withTag('triggered', 'c_arch', () => novaAt(.4, true)); });
 });
@@ -4974,7 +4979,8 @@ onRec('lightningHit', 'c_storm', () => {
     fn: () => { const t = nearby(P.pos, 7)[0]; if (t) { streak(g.position.clone(), t.pos.clone().setY(.6), 0xfff6b0, .14); procHit(t, AP() * 1.15, { src: 'c_storm', kb: 2 }); ringFx(t.pos, 0xfff27a, .3, 1.2, .2, .8); } } });
 });
 // Plague Lord: poisoned enemies leave a miasma cloud when they die
-rework('plord', lv => `A Poisoned enemy that dies leaves a miasma cloud for ${rkv([3, 4, 4], lv)} seconds that adds ${rkv([1, 1, 2], lv)} Poison ${lv >= 3 ? 'stacks' : 'stack'} per second to enemies inside. Once every 4 seconds.`);
+rework('plord', lv => `Your summons poison what they hit. A Poisoned enemy that dies leaves a miasma cloud for ${rkv([3, 4, 4], lv)} seconds that adds ${rkv([1, 1, 2], lv)} Poison ${lv >= 3 ? 'stacks' : 'stack'} per second to enemies inside. Once every 4 seconds.`);
+BUS.on('summonHit', c => { if (recLv('plord') && c.e && !c.e.dead && c.e.pos && readyOn(c.e, 'plord_p', .5)) poisonE(c.e, 1, 2); }, { id: 'plord_poison' });
 onRec('kill', 'plord', (c, lv) => {
   const e = c.e; if (!(e.poison && e.poison.stacks > 0) || !ready('plord', 4)) return;
   const pos = e.pos.clone().setY(0), per = Math.max(2, e.poison.per || 2);
@@ -4995,23 +5001,22 @@ BUS.on('summonHit', c => { if (recLv('c_necro') && c.m && c.m.kind === 'skel' &&
 BUS.on('summonExpire', c => { if (recLv('c_necro') && c.m.kind === 'skel') radial(c.m.pos.clone().setY(0), 2, AP() * 1.5, 'c_necro', 0x8fe04a); }, { id: 'c_necro' });
 const lichPierce = () => recLv('c_necro') && minions.filter(m => m.kind === 'skel').length >= 3 ? 1 : 0;
 // Pack Instinct: your hits mark Prey; wolves hunt it and their bites on Prey cleave
-rework('pbond', lv => `Enemies you hit become Prey for 4 seconds. Your wolves hunt Prey, and their bites on it also hit up to 2 nearby enemies for ${pct(rkv([.6, .75, .9], lv))} of the bite.`);
+rework('pbond', lv => `Enemies you hit become Prey for 4 seconds. Your summons hunt Prey, and their hits on it also strike up to 2 nearby enemies for ${pct(rkv([.6, .75, .9], lv))} of the hit.`);
 onRec('hit', 'pbond', c => { if (!c.e.dead) addStatus(c.e, 'prey', 4); });
 BUS.on('summonHit', c => {
-  const lv = recLv('pbond'); if (!lv || !c.m || c.m.kind !== 'wolf' || !hasSt(c.e, 'prey') || !c.e.lastHit) return;
+  const lv = recLv('pbond'); if (!lv || !c.m || !hasSt(c.e, 'prey') || !c.e.lastHit || c.e.lastHit.src === 'pbond') return;
   nearby(c.e.pos, 1.8, c.e).slice(0, 2).forEach(o => { procHit(o, c.e.lastHit.pre * rkv([.6, .75, .9], lv), { tag: 'summon', src: 'pbond', kb: 2, from: c.e.pos }); burst(o.pos.clone().setY(.7), 0xc9a060, 5, 3, 2); });
 }, { id: 'pbond_cleave' });
-const preyBias = (m, e) => m.kind === 'wolf' && hasSt(e, 'prey') ? 6 : 0;
+const preyBias = (m, e) => recLv('pbond') && hasSt(e, 'prey') ? 6 : 0;
 // Savage Howl: your howl empowers wolves and fears nearby enemies
-rework('howl', lv => `Your howl makes your wolves bite 25% faster and ${pct(rkv([.15, .2, .25], lv))} harder for 4 seconds, and Fears nearby enemies for ${rkv([.8, 1, 1.2], lv)} seconds.`);
+rework('howl', lv => `Your special lets out a howl: your summons attack 25% faster and ${pct(rkv([.15, .2, .25], lv))} harder for 4 seconds, and nearby enemies are Feared for ${rkv([.8, 1, 1.2], lv)} seconds.`);
 onRec('special', 'howl', (c, lv) => {
-  if (K() !== 'beastcaller') return;
   P.howlT = 4; P.howlAmt = rkv([.15, .2, .25], lv);
   nearby(P.pos, 4.5).forEach(e => addStatus(e, 'fear', rkv([.8, 1, 1.2], lv) + (e.state === 'stun' ? e.t : 0)));
 });
 REC_TICK.push(dt => { if (P.howlT > 0) P.howlT -= dt; });
-const minionMul = m => (m.kind === 'wolf' && P.howlT > 0 ? 1 + (P.howlAmt || 0) : 1);
-const minionCd = m => (m.kind === 'wolf' && P.howlT > 0 ? .8 : 1);
+const minionMul = m => (P.howlT > 0 ? 1 + (P.howlAmt || 0) : 1);
+const minionCd = m => (P.howlT > 0 ? .8 : 1) * (m.kind === 'wolf' && P.fangT > 0 ? 1 / 1.35 : 1);
 // Alpha Call (Mastery): two wolves biting one enemy within 1s call an Alpha spirit
 rework('c_beast', () => 'When two wolves bite the same enemy within a second, an Alpha spirit joins for 5 seconds, pouncing every 1.5 seconds for 180% of your Attack Power. Once every 8 seconds.');
 BUS.on('summonHit', c => {
@@ -5047,15 +5052,16 @@ onRec('hit', 'shieldd', (c, lv) => {
   cone(3, .9, c.dmg * rkv([1.25, 1.55, 1.85], lv), 'shieldd', 0x9fd0ff);
 });
 // Crimson Feast: kills during Frenzy release a blood arc
-rework('blust', lv => `A kill while Frenzy is active releases a blood arc around the fallen enemy for ${pct(rkv([1, 1.3, 1.6], lv))} of your Attack Power.`);
+rework('blust', lv => `Grants Frenzy: each kill gives 6% more damage for 4 seconds, stacking 5 times. A kill while Frenzy is active releases a blood arc around the fallen enemy for ${pct(rkv([1, 1.3, 1.6], lv))} of your Attack Power.`);
+UPM.blust.fx = { frenzy: 1 };
 onRec('kill', 'blust', (c, lv) => {
   if (!(P.frenzy > 0) || c.tag === 'triggered' || !ready('blust', .25)) return;
   radial(c.e.pos.clone().setY(0), 2 + (lv >= 3 ? .2 : 0), AP() * rkv([1, 1.3, 1.6], lv), 'blust', 0xd0303a, { skip: c.e });
 });
 // Fortress Stance: while shielded, every 4th attack hit sends out a ground wave
-rework('fstance', lv => `While you hold any shield, every 4th attack hit releases a ground wave that knocks enemies back, for ${pct(rkv([1.2, 1.5, 1.8], lv))} of that hit.`);
+rework('fstance', lv => `While you hold any shield, every 6th attack hit releases a ground wave that knocks enemies back, for ${pct(rkv([1.2, 1.5, 1.8], lv))} of that hit.`);
 onRec('hit', 'fstance', (c, lv) => {
-  if (c.tag !== 'attack' || !(P.shield > 0) || !count('fstance', 4)) return;
+  if (c.tag !== 'attack' || !(P.shield > 0) || !count('fstance', 6)) return;
   radial(P.pos.clone().setY(0), 2.5, c.dmg * rkv([1.2, 1.5, 1.8], lv), 'fstance', 0xc4b08a, { kb: 7 }); shake = Math.max(shake, .15);
 });
 BUS.on('shieldBreak', () => { if (P.cnt) P.cnt.fstance = 0; }, { id: 'fstance_reset' });
@@ -5143,7 +5149,7 @@ onRec('hit', 'cstrike', (c, lv) => {
   zap(p, e, c.dmg * rkv([1.8, 2.3, 2.8], lv), 'cstrike', 0x9fc0ff, { y: 1.2, w: .22, kb: 3 });
 });
 // Warmaster (Mastery): every 6th attack hit summons a spectral soldier (max 3) that strikes every 2s
-rework('c_war', () => 'Every 6th attack hit summons a spectral soldier for 8 seconds (up to 3). Each soldier strikes a nearby enemy every 1.5 seconds for 60% of your Attack Power.');
+rework('c_war', () => 'Every 4th attack hit summons a spectral soldier for 8 seconds (up to 3). Each soldier strikes a nearby enemy every 1.5 seconds for 60% of your Attack Power.');
 let soldiers = [];
 const ghostMat = basic(0x9fc0ff, { transparent: true, opacity: .55, depthWrite: false });
 function spawnSoldier() {
@@ -5152,7 +5158,7 @@ function spawnSoldier() {
   const s = { g, t: 8, cd: 1, a: Math.random() * 6.28 };
   capPush(soldiers, s, 3, o => scene.remove(o.g)); burst(P.pos.clone().setY(1), 0x9fc0ff, 12, 3, 2);
 }
-onRec('hit', 'c_war', c => { if (c.tag === 'attack' && count('c_war', 6)) spawnSoldier(); });
+onRec('hit', 'c_war', c => { if (c.tag === 'attack' && count('c_war', 4)) spawnSoldier(); });
 REC_TICK.push(dt => {
   if (!soldiers.length) return;
   soldiers.forEach((s, i) => {
@@ -5194,7 +5200,9 @@ function ptipsFire(pos, dir, power) {
 rework('keen', lv => `Hitting the same enemy 3 times in a row Marks it for 5 seconds. Your critical hits on Marked enemies deal ${pct(rkv([.5, .65, .8], lv))} more crit damage.`);
 onRec('hit', 'keen', c => { if (P.chain && P.chain.e === c.e && P.chain.n >= 3 && !c.e.dead) MARK.add(c.e); });
 // Barbed Snares: trapped enemies Bleed and stay pinned longer
-rework('barbs', lv => `Enemies caught by your snare trap Bleed for ${pct(rkv([.2, .25, .3], lv))} of your Attack Power per second for 4 seconds and stay pinned ${rkv([.4, .6, .8], lv)}s longer.`);
+rework('barbs', lv => `Your special drops a snare trap where it lands (Trapper classes already do). Enemies caught by your snare trap Bleed for ${pct(rkv([.2, .25, .3], lv))} of your Attack Power per second for 4 seconds and stay pinned ${rkv([.4, .6, .8], lv)}s longer.`);
+function dropTrap(pos) { if (traps.length >= 3) { const old = traps.shift(); scene.remove(old.mesh); } const mesh = makeTrapMesh(); mesh.position.set(pos.x, .02, pos.z); scene.add(mesh); traps.push({ mesh, pos: pos.clone().setY(0), armT: .6, life: 22, armed: false }); }
+onRec('special', 'barbs', c => { if (!inLine('trapper') && P.cls === 'hunter' && c.pos) dropTrap(c.pos); });
 onRec('trapSpring', 'barbs', (c, lv) => { const e = c.e; if (!e || e.dead) return; bleed(e, AP() * rkv([.2, .25, .3], lv)); if (e.state === 'stun') e.t += rkv([.4, .6, .8], lv); });
 // Steady Aim: handled in recAtkMul
 rework('saim', lv => `Consecutive hits on the same enemy deal ${pct(rkv([.06, .08, .1], lv))} more damage each, up to 5 stacks. Resets when you switch targets or stop for 3 seconds.`);
@@ -5207,7 +5215,7 @@ onRec('kill', 'exec', (c, lv) => {
 // Long Shot: handled in recAtkMul and the arrow hit (extra pierce)
 rework('lshot', lv => `Arrows that travel at least 6 meters deal ${pct(rkv([.25, .35, .45], lv))} more damage and pierce one more enemy.`);
 // Perfect Execution (Mastery): your crits Mark; 3 Marked enemies trigger an execution volley that consumes the Marks
-rework('c_sharp', () => 'Your critical hits Mark enemies. When 3 different enemies are Marked, you fire an execution volley that hits each for 400% of your Attack Power and consumes their Marks. Once every 8 seconds.');
+rework('c_sharp', () => 'Your critical hits Mark enemies. When 3 different enemies are Marked, you fire an execution volley that hits each for 400% of your Attack Power and consumes their Marks. Once every 5 seconds.');
 // Shadowstep: dodging leaves an afterimage that slashes around itself
 rework('sstep', lv => `Dodging leaves an afterimage that slashes around itself 0.8 seconds later for ${pct(rkv([1.8, 2.3, 2.8], lv))} of your Attack Power. Once every 3 seconds.`);
 onRec('dodgeStart', 'sstep', (c, lv) => {
@@ -5228,7 +5236,8 @@ onRec('kill', 'c_stalk', c => {
   nearby(c.e.pos, 8, c.e).slice(0, 3).forEach((t, i) => zap(c.e.pos, t, AP() * 2.5, 'c_stalk', 0x9a86ff, { delay: .05 + i * .06, y: 1, w: .2 }));
 });
 // Blasting Powder: your explosions leave burning patches
-rework('powder', lv => `Your explosions leave a burning patch for 3 seconds that burns enemies standing in it for ${pct(rkv([.35, .5, .65], lv))} of your Attack Power per second. Up to 3 patches.`);
+rework('powder', lv => `Your snare traps burst in a small explosion when sprung (Saboteur traps already explode). Your explosions leave a burning patch for 3 seconds that burns enemies standing in it for ${pct(rkv([.35, .5, .65], lv))} of your Attack Power per second. Up to 3 patches.`);
+onRec('trapSpring', 'powder', c => { if (K() !== 'saboteur') addBlast(c.pos, false, 20, 1.6); });
 onRec('explosion', 'powder', (c, lv) => {
   const pos = c.pos.clone().setY(0);
   addHazard({ src: 'powder', t: 3, max: 3, mesh: decal(pos, 1.5, 0xff7a2a, .4), fade: .4, every: 1, tick: .5,
@@ -5259,8 +5268,9 @@ onRec('dodgeEnd', 'twall', (c, lv) => {
   }
 });
 // Rootbind: handled in recAtkMul
-rework('rootb', lv => `Your attack hits on Rooted enemies deal ${pct(rkv([.25, .35, .45], lv))} more damage and extend the root by 0.3 seconds (once per root).`);
+rework('rootb', lv => `Enemies pinned by your snare traps count as Rooted. Your attack hits on Rooted enemies deal ${pct(rkv([.25, .35, .45], lv))} more damage and extend the root by 0.3 seconds (once per root).`);
 // Grove Heart (Mastery): every 8th attack hit roots; enemies killed while Rooted leave a sapling grove
+onRec('trapSpring', 'rootb', c => { if (c.e && !c.e.dead) addStatus(c.e, 'rooted', c.e.state === 'stun' ? c.e.t : 1, null, true); });
 rework('c_ward', () => 'Every 8th attack hit roots its target for 1 second. An enemy killed while Rooted leaves a sapling grove for 4 seconds that heals you 2% per second while you stand in it and fires a thorn every 2 seconds for 140% of your Attack Power. Up to 2 groves.');
 onRec('hit', 'c_ward', c => { if (c.tag === 'attack' && count('c_ward', 8) && !c.e.dead) addStatus(c.e, 'rooted', 1); });
 onRec('kill', 'c_ward', c => {
@@ -5274,7 +5284,7 @@ onRec('kill', 'c_ward', c => {
 });
 // Perfect Execution resolves last: readers (Hunter's Mark, Scope of Ruin) see the Mark before it is consumed
 function peCheck() {
-  if (!recLv('c_sharp') || MARK.count() < 3 || !ready('c_sharp', 8)) return;
+  if (!recLv('c_sharp') || MARK.count() < 3 || !ready('c_sharp', 5)) return;
   const ts = MARK.list.slice(); pop(P.pos, 'Perfect Execution', 'crit'); flashScreen('#ffd23f', .1, .2);
   ts.forEach((e, i) => { const t = e; later(.05 + i * .07, () => { if (t.dead) return; streak(P.pos.clone().setY(1), t.pos.clone().setY(.9), 0xffd23f, .25); procHit(t, AP() * 4, { src: 'c_sharp', kb: 4 }); MARK.consume(t); }); });
 }
@@ -5325,12 +5335,12 @@ onRel('kill', 'snake', c => {
     burst(pos.clone().setY(.4), 0x8fe04a, 14, 4, 3); nearby(pos, 2).slice(0, 3).forEach(o => { o.sacPois = true; poisonE(o, 2, 2); }); h.t = 0; } });
 });
 // Prism Shard: two different elements within 3 seconds trigger an Elemental Reaction
-reworkRelic('prism', 'Hitting an enemy with a second, different element (fire, frost or lightning) within 3 seconds triggers an Elemental Reaction for 215% of your Attack Power around it.');
+reworkRelic('prism', 'Hitting an enemy with a second, different element (fire, frost or lightning) within 3 seconds triggers an Elemental Reaction for 150% of your Attack Power around it. Once every 3 seconds per enemy.');
 function elemHit(e, k) {
   if (!e || e.dead) return; const o = e.elem; e.elem = { k, t: gameTime };
-  if (!own('prism') || !o || o.k === k || gameTime - o.t > 3 || !readyOn(e, 'prism', 2)) return;
+  if (!own('prism') || !o || o.k === k || gameTime - o.t > 3 || !readyOn(e, 'prism', 3)) return;
   const col = { fire: 0xff8a2a, frost: 0x9fe8ff, shock: 0xfff27a }[k];
-  pop(e.pos, 'Reaction', 'crit'); radial(e.pos.clone().setY(0), 2.5, AP() * 2.15, 'prism', col, { kb: 4 }); ringFx(e.pos, 0xffffff, .3, 2.6, .3, .9);
+  pop(e.pos, 'Reaction', 'crit'); radial(e.pos.clone().setY(0), 2.5, AP() * 1.5, 'prism', col, { kb: 4 }); ringFx(e.pos, 0xffffff, .3, 2.6, .3, .9);
 }
 // Ember Heart: your special on a Burning enemy creates a fire field
 reworkRelic('emberh', 'When your special hits a Burning enemy, it leaves a fire field for 4 seconds that burns enemies inside for 30% of your Attack Power per second. Up to 2 fields.');
@@ -5456,6 +5466,14 @@ onRel('special', 'crowne', c => {
     withTag('triggered', 'crowne', () => { if (P.cls === 'knight') slamAt(at, .4, true); else if (P.cls === 'hunter') spawnRain(at, .4, true); else { const p0 = P.pos.clone(); P.pos.copy(at); novaAt(.4, true); P.pos.copy(p0); } });
     P.crownArea = 1;
   });
+});
+
+// HUD: Frenzy stacks with a draining timer, and snare trap count
+REC_TICK.push(() => {
+  const el = $('buildHud'); if (!el) return;
+  const fr = P.frenzy > 0 ? `<span class="bh fr"><b>Frenzy ×${P.frenzy}</b><i style="width:${Math.round(Math.max(0, P.frenzyT) / 4 * 100)}%"></i></span>` : '';
+  const tr = (inLine('trapper') || recLv('barbs')) ? `<span class="bh tr"><b>Traps ${traps.length}/3</b></span>` : '';
+  const k = fr + tr; if (el.dataset.k !== k) { el.dataset.k = k; el.innerHTML = k; }
 });
 
 /* ---------- game state ---------- */
@@ -5688,16 +5706,6 @@ function fireHunter(power) {
     ptipsFire(pos, dir, false);
     P.state = 'shot'; P.t = .18;
   }
-}
-function placeTrap() {
-  P.bufSkill = 0;
-  if (P.skillCd > 0) return;
-  if (P.st < 12) { flagStamina(); return; }
-  P.st -= 12; P.stDelay = .4; P.skillCd = CLASSES.hunter.skillCd * spCdMul();
-  if (traps.length >= 2) { const old = traps.shift(); scene.remove(old.mesh); }
-  const mesh = makeTrapMesh(); mesh.position.set(P.pos.x, .02, P.pos.z); scene.add(mesh);
-  traps.push({ mesh, pos: P.pos.clone().setY(0), armT: .4, life: 22, armed: false });
-  burst(P.pos.clone().setY(.1), 0x8f96a3, 6, 2, 1);
 }
 // knight special: ground slam
 function startSlam() {

@@ -3076,6 +3076,7 @@ function offerLevel() {
 // boon effects
 function ignite(e, total) {
   if (e.dead) return;
+  elemHit(e, 'fire');
   e.burn = { left: 3, dps: total / 3, tick: .5 };
 }
 function dot(e, d, cls = 'burn', raw) {
@@ -3145,7 +3146,7 @@ function dashHits(a, b) {
   }
 }
 const spPow = () => 1 + L3([0, .3, .5, .7], bl('over'));
-const spArea = () => 1 + L3([0, .15, .25, .35], bl('over'));
+const spArea = () => (1 + L3([0, .15, .25, .35], bl('over'))) * ((P && P.crownArea) || 1);
 const echoPow = () => L3([0, .5, .7, .9], bl('echo'));
 function onDodgeStart(pos) {
   P.dashHit = new Set();
@@ -3262,13 +3263,14 @@ function lightning(e, n = 1) {
     withTag('triggered', 'lightning', () => hitEnemy(t, dd, 3, true, P.pos, false));
     BUS.emit(t === e ? 'lightningHit' : 'lightningJump', { e: t, dmg: dd, from: e }); if (t !== e) BUS.emit('lightningHit', { e: t, dmg: dd, from: e });
     if (t.dead) return;
+    addStatus(t, 'shocked', 3, null, true); elemHit(t, 'shock');
     if (bl('plasma')) ignite(t, 18);
     if (bl('current')) poisonE(t, 2, 3);
     if (bl('riftstorm')) t.curse = { t: 4, amt: Math.max(.25, t.curse ? t.curse.amt : 0) };
   };
   strike(e, 20);
   enemies.filter(o => o !== e && !o.dead && o.state !== 'spawn' && o.pos.distanceTo(e.pos) < 4.5)
-    .sort((a, b) => a.pos.distanceTo(e.pos) - b.pos.distanceTo(e.pos)).slice(0, n).forEach(o => strike(o, 14));
+    .sort((a, b) => a.pos.distanceTo(e.pos) - b.pos.distanceTo(e.pos)).slice(0, n).forEach((o, i, A) => { strike(o, 14); if (i === A.length - 1) BUS.emit('lightningEnd', { e: o }); });
   shake = Math.max(shake, .2);
 }
 
@@ -3730,7 +3732,7 @@ function spawnMinion(kind, at, life) {
   if (kind === 'skel') { md.weapon.visible = false; md.mats.forEach(mt => mt.color.lerp(new T.Color(0x9fe08a), .35)); md.root.scale.setScalar(.85); }
   const p = (at || P.pos).clone(); p.y = 0;
   md.root.position.copy(p); scene.add(md.root);
-  minions.push({ kind, md, pos: p, life: life || Infinity, cd: 0, walk: 0, facing: 0, beast: kind !== 'skel' });
+  minions.push({ kind, md, pos: p, life: life || Infinity, cd: 0, walk: 0, facing: 0, beast: kind !== 'skel' }); BUS.emit('summonSpawn', { m: minions[minions.length - 1] });
   burst(p.clone().setY(.6), kind === 'fox' ? 0xffc870 : kind === 'wolf' ? 0x9ff0e0 : 0x8fe04a, 14, 3, 3); ringFx(p, kind === 'fox' ? 0xffc870 : kind === 'wolf' ? 0x9ff0e0 : 0x8fe04a, .2, 1.2, .3, .7);
 }
 function summonWolves() { const n = 2; for (let i = 0; i < n; i++) spawnMinion('wolf', P.pos.clone().add(new T.Vector3(Math.cos(i * 2.4) * 1.2, 0, Math.sin(i * 2.4) * 1.2))); }
@@ -3766,11 +3768,11 @@ function updateMinions(dt) {
 // ----- bramble groves (Warden) -----
 let groves = [];
 function addGrove(c) {
-  const g = new T.Group(), R = 2.4 * spArea();
+  const g = new T.Group(), R = 2.4 * spArea() * (ownRelic('heartw') ? 1.25 : 1);
   g.add(flat(new T.CircleGeometry(R, 32), decalMat(0x3a6a2a, .35))); g.add(flat(new T.RingGeometry(R - .12, R, 40), decalMat(0x8fe04a, .7)));
   for (let i = 0; i < 9; i++) { const a = i / 9 * TAU, th = new T.Mesh(new T.ConeGeometry(.06, .45, 5), M(0x3a5a22)); th.position.set(Math.cos(a) * R * .8, .2, Math.sin(a) * R * .8); th.rotation.z = rand(-.4, .4); g.add(th); }
   g.position.copy(c); scene.add(g);
-  groves.push({ g, c: c.clone(), R, t: 6, tick: 0 });
+  groves.push({ g, c: c.clone(), R, t: 6 + (ownRelic('heartw') ? 3 : 0), tick: 0 });
 }
 function updateGroves(dt) {
   for (let i = groves.length - 1; i >= 0; i--) {
@@ -4669,7 +4671,8 @@ const STATUS = {
   fear:       { n: 'Feared', c: 0xb0b0c0, bossImmune: true },
   commanded:  { n: 'Commanded', c: 0xd0303a },
   shocked:    { n: 'Shocked', c: 0xfff27a, quiet: true },
-  mark:       { n: 'Marked', c: 0xffd23f }
+  mark:       { n: 'Marked', c: 0xffd23f },
+  taunted:    { n: 'Taunted', c: 0x9fe3ff, bossImmune: true, quiet: true }
 };
 const ST_SHOW = ['mark', 'judged', 'commanded', 'prey', 'conductive', 'exposed', 'rooted', 'fear', 'bleed'];
 const hasSt = (e, k) => !!(e && e.st && e.st[k] && e.st[k].t > 0);
@@ -4762,6 +4765,17 @@ function stepEnemy(e, dt, rdt) {
     e.facing = Math.atan2(away.x, away.z); if (e.model && e.model.root) { e.model.root.position.x = e.pos.x; e.model.root.position.z = e.pos.z; e.model.root.rotation.y = e.facing; }
     if (e.state === 'windup') { e.state = 'recover'; e.t = 0; hideTele(e); }
     return;
+  }
+  if (!e.dead && e.state !== 'spawn' && e.state !== 'stun' && hasSt(e, 'taunted')) {
+    const tg = e.st.taunted.tgt; const alive = tg && tg.pos && (!tg.md || minions.includes(tg));
+    if (!alive) clearSt(e, 'taunted');
+    else {
+      const to = tg.pos.clone().sub(e.pos).setY(0), L = to.length();
+      if (L > 1.2) { e.pos.addScaledVector(to.normalize(), (e.def.speed || 2) * dt); }
+      e.facing = Math.atan2(to.x, to.z); if (e.model && e.model.root) { e.model.root.position.x = e.pos.x; e.model.root.position.z = e.pos.z; e.model.root.rotation.y = e.facing; }
+      if (e.state === 'windup') { e.state = 'recover'; e.t = 0; hideTele(e); }
+      return;
+    }
   }
   const rooted = !e.dead && hasSt(e, 'rooted'), x0 = e.pos.x, z0 = e.pos.z;
   updateEnemy(e, dt);
@@ -5266,6 +5280,183 @@ function peCheck() {
 }
 BUS.on('crit', c => { if (recLv('c_sharp') && !c.e.dead) MARK.add(c.e); peCheck(); }, { id: 'c_sharp_mark', tags: ['attack', 'special'] });
 BUS.on('hit', () => peCheck(), { id: 'c_sharp_check', tags: ['attack', 'special'] });
+
+/* ---------- Relics (Patch C) ---------- */
+// swap a relic to its new base effect; its Ultimate Resonance (hasRes) is untouched
+function reworkRelic(id, d) { const r = RELICS[id]; r.fx = {}; delete r.flag; r.d = d; LIVE[id] = true; }
+const own = ownRelic;
+function onRel(ev, id, fn, tags) { BUS.on(ev, c => fn(c), { id: 'rel_' + id, tags, when: () => own(id) }); }
+// Tower Crest: shields store what they absorb; your next special releases it as a seismic ring
+reworkRelic('tower', 'Whenever one of your shields absorbs damage, store 25% of it. Your next special releases the store as a seismic ring.');
+onRel('shieldAbsorb', 'tower', c => { P.towerS = Math.min(AP() * 3, (P.towerS || 0) + c.amt * .25); });
+onRel('special', 'tower', () => { if (!(P.towerS >= 1)) return; const d = P.towerS; P.towerS = 0; radial(P.pos.clone().setY(0), 3, d, 'tower', 0xc4b08a, { kb: 5 }); crackFx(P.pos, 2.2); });
+// Bloodied Pennant: every 5th kill plants a banner; enemies near it are Exposed
+reworkRelic('pennant', 'Every 5th kill plants a blood banner for 6 seconds. Enemies within 4 meters of it take 15% more damage (Exposed).');
+onRel('kill', 'pennant', c => {
+  if (!count('pennant', 5)) return; const pos = c.e.pos.clone().setY(0), g = new T.Group();
+  const pole = new T.Mesh(new T.CylinderGeometry(.04, .04, 2, 6), M(0x5a4030)), cloth = new T.Mesh(new T.PlaneGeometry(.7, .5), basic(0xa02028, { side: T.DoubleSide }));
+  pole.position.y = 1; cloth.position.set(.36, 1.7, 0); g.add(pole, cloth, flat(new T.RingGeometry(3.9, 4, 48), decalMat(0xa02028, .4))); g.position.copy(pos); scene.add(g);
+  addHazard({ src: 'pennant', t: 6, max: 1, mesh: g, every: .5, fn: () => nearby(pos, 4).forEach(e => expose(e, .15, .8)), update: () => { cloth.rotation.y = Math.sin(gameTime * 3) * .3; } });
+});
+// Executioner's Chain: low-health kills chain the nearest enemy toward the kill and Expose it
+reworkRelic('chain', 'Killing an enemy below 30% health chains the nearest enemy, pulling it 2 meters toward the kill and Exposing it (15% more damage taken) for 3 seconds. Bosses are Exposed but not pulled.');
+onRel('kill', 'chain', c => {
+  if (!(c.hp0 < .3) || !ready('chain', 2)) return; const t = nearby(c.e.pos, 7, c.e)[0]; if (!t) return;
+  streak(c.e.pos.clone().setY(.8), t.pos.clone().setY(.8), 0x8a8f9a, .3);
+  if (!t.def.boss) { const d = c.e.pos.clone().sub(t.pos).setY(0), L = d.length(); if (L > .1) t.pos.addScaledVector(d.normalize(), Math.min(2, L - .6)); }
+  expose(t, .15, 3);
+});
+// Hawkfeather: critical arrow hits release 2 homing feathers
+reworkRelic('hawk', 'Your critical arrow hits release 2 homing feathers at different nearby enemies, each dealing 60% of the hit. Up to once every 0.8 seconds.');
+onRel('crit', 'hawk', c => { if (P.cls !== 'hunter' || !ready('hawk', .8)) return; nearby(c.e.pos, 7, c.e).slice(0, 2).forEach((t, i) => zap(c.e.pos, t, c.dmg * .6, 'hawk', 0xf0e0c0, { delay: .08 + i * .06, y: 1.1 })); }, ['attack']);
+// Bear Jaw: your trap bites a second time
+reworkRelic('jaw', 'Your snare trap bites a second time 0.4 seconds after it springs, hitting pinned enemies for 250% of your Attack Power and pinning them 0.5 seconds longer.');
+onRel('trapSpring', 'jaw', c => {
+  const pos = c.pos.clone();
+  later(.4, () => { spikesAt ? spikesAt(pos, 0x8a8f9a, 6, .9) : 0; nearby(pos, 1.3).filter(e => e.state === 'stun').forEach(e => { procHit(e, AP() * 2.5, { src: 'jaw', kb: 0, from: pos }); e.t += .5; }); });
+});
+// Snakeskin Pouch: traps poison; heavily poisoned enemies drop toxic sacs
+reworkRelic('snake', 'Your snare traps poison what they catch. An enemy with 4 or more Poison stacks drops a toxic sac when it dies; the sac bursts on contact, poisoning up to 3 enemies for 2 stacks. Up to 2 sacs.');
+onRel('trapSpring', 'snake', c => { if (c.e && !c.e.dead) poisonE(c.e, 1, 2); });
+onRel('kill', 'snake', c => {
+  const e = c.e; if (!(e.poison && e.poison.stacks >= 4) || e.sacPois) return; const pos = e.pos.clone().setY(0), m = new T.Mesh(new T.SphereGeometry(.22, 10, 8), basic(0x8fe04a, { transparent: true, opacity: .85 }));
+  m.position.set(pos.x, .25, pos.z); scene.add(m);
+  addHazard({ src: 'snake', t: 4, max: 2, mesh: m, update: h => { m.position.y = .25 + Math.sin(gameTime * 5) * .05; if (!nearby(pos, .8).length) return;
+    burst(pos.clone().setY(.4), 0x8fe04a, 14, 4, 3); nearby(pos, 2).slice(0, 3).forEach(o => { o.sacPois = true; poisonE(o, 2, 2); }); h.t = 0; } });
+});
+// Prism Shard: two different elements within 3 seconds trigger an Elemental Reaction
+reworkRelic('prism', 'Hitting an enemy with a second, different element (fire, frost or lightning) within 3 seconds triggers an Elemental Reaction for 215% of your Attack Power around it.');
+function elemHit(e, k) {
+  if (!e || e.dead) return; const o = e.elem; e.elem = { k, t: gameTime };
+  if (!own('prism') || !o || o.k === k || gameTime - o.t > 3 || !readyOn(e, 'prism', 2)) return;
+  const col = { fire: 0xff8a2a, frost: 0x9fe8ff, shock: 0xfff27a }[k];
+  pop(e.pos, 'Reaction', 'crit'); radial(e.pos.clone().setY(0), 2.5, AP() * 2.15, 'prism', col, { kb: 4 }); ringFx(e.pos, 0xffffff, .3, 2.6, .3, .9);
+}
+// Ember Heart: your special on a Burning enemy creates a fire field
+reworkRelic('emberh', 'When your special hits a Burning enemy, it leaves a fire field for 4 seconds that burns enemies inside for 30% of your Attack Power per second. Up to 2 fields.');
+onRel('hit', 'emberh', c => {
+  const e = c.e; if (!(e.burn && e.burn.left > 0) || !readyOn(e, 'emberh', 4)) return; const pos = e.pos.clone().setY(0);
+  addHazard({ src: 'emberh', t: 4, max: 2, mesh: decal(pos, 3, 0xff6a1a, .35), fade: .35, every: 1, tick: .3,
+    update: () => { if (Math.random() < .4) burst(pos.clone().add(new T.Vector3(rand(-2.5, 2.5), .2, rand(-2.5, 2.5))), 0xff8a2a, 1, 1, .8); },
+    fn: () => nearby(pos, 3).forEach(o => procHit(o, AP() * .3, { tag: 'dot', src: 'emberh', kb: 0 })) });
+}, ['special']);
+// Spirit Lantern: your summons taunt nearby enemies; they burst when they fall
+reworkRelic('slant', 'Your summons draw nearby enemies to them for 3 seconds when they appear and every 6 seconds after. When a summon falls it bursts for 125% of your Attack Power. Bosses ignore the taunt.');
+function taunt(pos, r, dur, tgt) { nearby(pos, r).forEach(e => { if (!e.def.boss) addStatus(e, 'taunted', dur, { tgt }, true); }); }
+onRel('summonSpawn', 'slant', c => { c.m.tauntCd = 0; });
+REC_TICK.push(dt => { if (!own('slant')) return; for (const m of minions) { m.tauntCd = (m.tauntCd ?? 0) - dt; if (m.tauntCd <= 0) { m.tauntCd = 6; taunt(m.pos, 4, 3, m); ringFx(m.pos, 0x9fe3ff, .3, 4, .3, .5); } } });
+onRel('summonExpire', 'slant', c => radial(c.m.pos.clone().setY(0), 2, AP() * 1.25, 'slant', 0x9fe3ff));
+// Wisp Jar: your special throws your orbiting wisps as homing bolts
+reworkRelic('wisp', 'Your special consumes up to 3 orbiting spirits, firing a homing spirit bolt per spirit for 110% of your Attack Power each.');
+onRel('special', 'wisp', () => {
+  if (!ready('wisp', 1)) return; const os = orbs.filter(o => o.t > 0).slice(0, 3), ts = nearby(P.pos, 10); if (!os.length || !ts.length) return;
+  os.forEach((o, i) => { const from = o.m.position.clone().setY(0); o.t = 0; zap(from, ts[i % ts.length], AP() * 1.1, 'wisp', 0x9fe3ff, { delay: .05 + i * .07, y: 1, w: .2 }); });
+});
+// Bulwark Heart: a shield every 10 seconds; when a shield breaks it countershocks
+reworkRelic('bheart', 'Every 10 seconds gain a shield worth 10% of your health. When any shield breaks, release a countershock for 400% of your Attack Power plus 25% of what the shield absorbed. Up to once every 8 seconds.');
+REC_TICK.push(dt => { if (!own('bheart') || P.dead) return; P.bhT = (P.bhT ?? 10) - dt; if (P.bhT <= 0) { P.bhT = 10; P.shield = Math.max(P.shield, Math.round(P.max * .1)); P.shieldT = Math.max(P.shieldT, 10); } });
+onRel('shieldAbsorb', 'bheart', c => { P.bhLog = (P.bhLog || []).filter(x => gameTime - x[0] < 5); P.bhLog.push([gameTime, c.amt]); });
+onRel('shieldBreak', 'bheart', () => {
+  if (!ready('bheart', 8)) return; const abs = (P.bhLog || []).filter(x => gameTime - x[0] < 5).reduce((a, x) => a + x[1], 0);
+  radial(P.pos.clone().setY(0), 3, AP() * 4 + Math.min(AP() * 3, abs * .25), 'bheart', 0x9fd0ff, { kb: 7 }); shake = Math.max(shake, .3);
+});
+// Saint's Relic: healing 25% of your health in total summons a radiant halo
+reworkRelic('saint', "Every time you heal 25% of your health in total, a radiant halo appears for 5 seconds and fires a light bolt at a nearby enemy each second for 125% of your Attack Power.");
+onRel('heal', 'saint', c => {
+  P.saintH = (P.saintH || 0) + c.amt; if (P.saintH < P.max * .25 || hazards.some(h => h.src === 'saint')) return; P.saintH = 0;
+  const g = halo(0xffe9a8, 1.2, .6); scene.add(g);
+  addHazard({ src: 'saint', t: 5, mesh: g, every: 1, tick: .5, update: () => g.position.set(P.pos.x, 2.4, P.pos.z), fn: () => { const t = nearby(P.pos, 7)[0]; if (t) zap(g.position.clone().setY(0), t, AP() * 1.25, 'saint', 0xffe9a8, { y: 2.4 }); } });
+});
+// Blood Moon: losing 25% of your health within 6 seconds spawns an orbiting crimson blade
+reworkRelic('bmoon', 'Losing 25% of your health within 6 seconds spawns a crimson blade that orbits you for 6 seconds, cutting enemies it passes every 0.8 seconds for 150% of your Attack Power. Up to 3 blades.');
+onRel('damageTaken', 'bmoon', c => {
+  P.bmLog = (P.bmLog || []).filter(x => gameTime - x[0] < 6); P.bmLog.push([gameTime, c.amt]);
+  if (P.bmLog.reduce((a, x) => a + x[1], 0) < P.max * .25) return; P.bmLog = [];
+  const m = new T.Mesh(new T.BoxGeometry(.08, .1, .9), basic(0xd0303a, { fog: false })); scene.add(m); const a0 = Math.random() * 6.28;
+  addHazard({ src: 'bmoon', t: 6, max: 3, mesh: m, every: .8, tick: .2, update: h => { const a = a0 + gameTime * 4; m.position.set(P.pos.x + Math.cos(a) * 1.6, .9, P.pos.z + Math.sin(a) * 1.6); m.rotation.y = -a; },
+    fn: () => nearby(m.position.clone().setY(0), 1).forEach(e => { procHit(e, AP() * 1.5, { src: 'bmoon', kb: 2 }); burst(e.pos.clone().setY(.8), 0xd0303a, 6, 3, 2); }) });
+});
+// Horn of Command: War Cry raises 3 spectral shields that each block a hit and slam the attacker
+reworkRelic('horn', 'Your War Cry raises 3 spectral shields around you for 6 seconds. Each blocks one enemy hit or projectile, then slams the attacker for 150% of your Attack Power and staggers it.');
+let hornG = null;
+onRel('special', 'horn', () => { if (K() !== 'warlord') return; P.hornN = 3; P.hornT2 = 6; });
+function hornBlock(src) {
+  if (!own('horn') || !(P.hornN > 0) || !(P.hornT2 > 0)) return false; P.hornN--;
+  pop(P.pos, 'Blocked', 'info'); ringFx(P.pos, 0x9fc0ff, .3, 1.6, .25, .8);
+  if (src && !src.dead) { streak(P.pos.clone().setY(1), src.pos.clone().setY(1), 0x9fc0ff, .2); procHit(src, AP() * 1.5, { src: 'horn', kb: 4 }); stunEnemy(src, .5, 'Staggered'); }
+  return true;
+}
+REC_TICK.push(dt => {
+  if (P.hornT2 > 0) P.hornT2 -= dt; const on = own('horn') && P.hornN > 0 && P.hornT2 > 0;
+  if (on && !hornG) { hornG = new T.Group(); for (let i = 0; i < 3; i++) { const s = new T.Mesh(new T.CircleGeometry(.32, 6), basic(0x9fc0ff, { transparent: true, opacity: .7, side: T.DoubleSide })); hornG.add(s); } scene.add(hornG); }
+  if (hornG) { hornG.visible = !!on; if (on) hornG.children.forEach((s, i) => { s.visible = i < P.hornN; const a = gameTime * 2 + i * 2.09; s.position.set(P.pos.x + Math.cos(a) * 1.1, 1, P.pos.z + Math.sin(a) * 1.1); s.rotation.y = -a; }); }
+});
+// Scope of Ruin: crits Mark; damage on a Marked enemy splashes to other Marked enemies
+reworkRelic('scope', 'Your critical hits Mark enemies. While 2 or more enemies are Marked, damage to a Marked enemy splashes 25% to up to 4 other Marked enemies.');
+onRel('crit', 'scope', c => { if (!c.e.dead) MARK.add(c.e); }, ['attack', 'special']);
+BUS.on('hit', c => {
+  if (!own('scope') || !hasSt(c.e, 'mark') || MARK.count() < 2) return;
+  MARK.list.filter(o => o !== c.e && !o.dead).slice(0, 4).forEach(o => { procHit(o, c.final * .25, { src: 'scope', kb: 0 }); sparkFx(o.pos.clone().setY(.9), 0xffd23f, .6); });
+}, { id: 'rel_scope', tags: ['attack', 'special'] });
+// readers before consumers: Scope of Ruin resolves before Perfect Execution
+{ const L = BUS.h.hit, i = L.findIndex(l => l.o.id === 'rel_scope'), j = L.findIndex(l => l.o.id === 'c_sharp_check'); if (i > j && j >= 0) L.splice(j, 0, L.splice(i, 1)[0]); }
+// Night Veil: perfect dodges leave an exploding shadow decoy that draws enemies
+reworkRelic('veil', 'Perfect dodges leave a shadow decoy for 2 seconds that draws nearby enemies to it, then explodes for 400% of your Attack Power. Bosses ignore it but still take the blast. Once every 5 seconds.');
+onRel('perfectDodge', 'veil', c => {
+  if (!ready('veil', 5)) return; const pos = c.pos.clone().setY(0), g = halo(0x6a5aa8, 1.6, .7); g.position.set(pos.x, .9, pos.z); scene.add(g);
+  const dec = { pos }; taunt(pos, 6, 2, dec);
+  addHazard({ src: 'veil', t: 2, mesh: g, end: () => radial(pos, 2, AP() * 4, 'veil', 0x9a86ff, { kb: 6 }) });
+});
+// Powder Keg: each roll drops a powder keg; kegs blow after 2s or when another explosion touches them
+reworkRelic('keg', 'Each roll drops a powder keg where it began (up to 3). A keg explodes after 2 seconds for 160% of your Attack Power, or at once when another of your explosions touches it.');
+function kegBoom(h) {
+  const pos = h.mesh.position.clone().setY(0), mul = h.demo ? 1.35 : 1;
+  radial(pos, 2, AP() * 1.6 * mul, 'keg', 0xffb347, { kb: 5 }); shake = Math.max(shake, .18);
+  if (!(h.depth >= 1)) BUS.emit('explosion', { pos, r: 2, blast: { keg: true, demo: h.demo }, depth: 1 });
+}
+onRel('dodgeStart', 'keg', c => {
+  const m = new T.Mesh(new T.CylinderGeometry(.22, .25, .45, 10), M(0x6a4a2a)); m.position.set(c.pos.x, .23, c.pos.z); scene.add(m);
+  addHazard({ src: 'keg', t: 2, max: 3, mesh: m, born: gameTime, update: () => { if (Math.random() < .3) burst(m.position.clone().setY(.55), 0xffb347, 1, .6, .5); }, end: kegBoom });
+});
+BUS.on('explosion', c => {
+  if (!own('keg')) return;
+  hazards.filter(h => h.src === 'keg' && h.t > 0 && gameTime - h.born > .3 && h.mesh.position.distanceTo(c.pos) < (c.r || 2) + .5).forEach(h => { h.depth = c.depth ? 1 : 0; h.t = 0; });
+}, { id: 'rel_keg_chain' });
+// Heartwood: a bigger, longer Thorn Grove that fires thorns
+reworkRelic('heartw', 'Your Thorn Grove lasts 3 seconds longer and grows 25% wider. Every second it fires a thorn at an enemy inside or near it for 90% of your Attack Power.');
+REC_TICK.push(dt => { if (!own('heartw')) return; for (const gr of groves) { gr.thT = (gr.thT ?? 1) - dt; if (gr.thT <= 0) { gr.thT = 1; const t = nearby(gr.c, gr.R + 2)[0]; if (t) zap(gr.c, t, AP() * .9, 'heartw', 0x8fe04a, { y: .5 }); } } });
+// Storm Chime: a chain lightning's final jump calls a thunderbolt
+reworkRelic('chime', 'When a chain lightning reaches its last target, a thunderbolt strikes it for 120% of your Attack Power, splashing nearby. Once a second.');
+onRel('lightningEnd', 'chime', c => {
+  if (!c.e || c.e.dead || !ready('chime', 1)) return; const pos = c.e.pos.clone().setY(0);
+  streak(pos.clone().setY(7), pos.clone().setY(.3), 0xfff6b0, .3); radial(pos, 2, AP() * 1.2, 'chime', 0xfff27a, { kb: 3 });
+});
+// Phylactery: Souls; lethal damage spends them all to revive you once per run
+reworkRelic('phyl', 'Kills gather Souls (max 3; 8 kills each, Poisoned or Hexed kills count double), and 1 is kept in reserve. When you would die with at least 1 Soul, spend them all to revive at 20% health plus 10% per Soul. Once per run.');
+BUS.on('lethalDamage', () => {
+  if (!SOUL.on() || !own('phyl') || P.phylUsed || !((P.souls || 0) >= 1)) return;
+  const n = P.souls; P.souls = 0; P.phylUsed = true; P.hp = Math.round(P.max * (.2 + .1 * n)); P.iframes = Math.max(P.iframes, 1.5);
+  pop(P.pos, 'Phylactery', 'crit'); flashScreen('#8fe04a', .2, .4); ringFx(P.pos, 0x8fe04a, .3, 3, .4, .9); burst(P.pos.clone().setY(1), 0x8fe04a, 30, 6, 4);
+}, { id: 'rel_phyl' });
+// Alpha Fang: every 8 wolf bites, your wolves frenzy
+reworkRelic('fang', 'Every 8 wolf bites build Pack Ferocity. At 8, your wolves bite 35% faster for 4 seconds, and their first bite on each enemy staggers it.');
+BUS.on('summonHit', c => {
+  if (!own('fang') || !c.m || c.m.kind !== 'wolf') return;
+  if (P.fangT > 0) { if (!c.e.dead && !c.e.fangHit) { c.e.fangHit = 1; stunEnemy(c.e, .5, 'Staggered'); } return; }
+  if (count('fang', 8)) { P.fangT = 4; enemies.forEach(e => e.fangHit = 0); pop(P.pos, 'Pack Ferocity', 'info'); }
+}, { id: 'rel_fang' });
+REC_TICK.push(dt => { if (P.fangT > 0) P.fangT -= dt; });
+// Crown of Echoes: every 2nd special echoes at 40% on a different nearby enemy
+reworkRelic('crowne', 'Every 2nd special creates an Echo a second later at 40% strength with a 15% larger area, centered on a different nearby enemy.');
+onRel('special', 'crowne', c => {
+  if (!count('crowne', 2)) return; const from = c.pos ? c.pos.clone() : P.pos.clone();
+  later(1, () => {
+    if (P.dead) return; const t = nearby(from, 8).find(e => e.pos.distanceTo(from) > 1) || nearby(from, 8)[0]; const at = t ? t.pos.clone().setY(0) : from;
+    P.crownArea = 1.15;
+    withTag('triggered', 'crowne', () => { if (P.cls === 'knight') slamAt(at, .4, true); else if (P.cls === 'hunter') spawnRain(at, .4, true); else { const p0 = P.pos.clone(); P.pos.copy(at); novaAt(.4, true); P.pos.copy(p0); } });
+    P.crownArea = 1;
+  });
+});
 
 /* ---------- game state ---------- */
 const TYPES = {
@@ -5817,6 +6008,7 @@ function killEnemy(e) {
 function stunEnemy(e, s, label = 'Stunned', frozen = false, force = false) {
   if (e.dead || e.inv) return;
   if (e.armor > 0 && !force) { if (Math.random() < .3) pop(e.pos, 'Armored', 'info'); return; }
+  if (frozen) elemHit(e, 'frost');
   if (frozen && bl('zero')) { s *= 1.5; e.curse = { t: 4, amt: Math.max(.2, e.curse ? e.curse.amt : 0) }; }
   e.state = 'stun'; e.t = s; e.frozen = frozen; hideTele(e);
   pop(e.pos, label, 'info');
@@ -5831,6 +6023,7 @@ function hideTele(e) {
 function hurtPlayer(dmg, srcPos, srcEnemy, heavy) {
   if (P.dead) return 'none';
   if (P.iframes <= 0 && P.hurtCd <= 0 && bl('evasion') && Math.random() < Math.min(.6, L3([0, .08, .12, .16], bl('evasion')))) { pop(P.pos, 'Evaded', 'info'); P.hurtCd = .3; return 'none'; }
+  if (P.iframes <= 0 && P.hurtCd <= 0 && hornBlock(srcEnemy)) { P.hurtCd = .3; return 'none'; }
   if (P.iframes <= 0 && P.hurtCd <= 0 && gc('charm') && P.ward) { P.ward = false; P.wardCd = wardCd(); pop(P.pos, 'Warded', 'info'); ringFx(P.pos, 0xc4b08a, .6, 1.6, .3, .8); P.hurtCd = .3; return 'none'; }
   dmg = Math.round(dmg * eLevelDmg() * srcTakeMul(srcEnemy) * (srcEnemy && srcEnemy.elite ? 1.35 : 1) * (srcEnemy && srcEnemy.weakT > 0 ? 1 - srcEnemy.weakAmt : 1) * (curseOn('pain') ? 1.6 : 1));
   if (P.iframes > 0) {

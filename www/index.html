@@ -256,6 +256,8 @@ html,body{touch-action:none;overscroll-behavior:none;-webkit-text-size-adjust:10
 .card,#sheet,.sh-col,#talents{touch-action:pan-y}
 button{touch-action:manipulation}
 @media (max-width:560px){.sh-stats{grid-template-columns:repeat(2,1fr)}}
+.pop.heal{color:#7fe08a}
+#soulPips{display:flex;gap:5px;margin:3px 0 0 2px}#soulPips i{width:11px;height:11px;border-radius:50%;border:1.5px solid #8fe04a;background:rgba(0,0,0,.35)}#soulPips i.on{background:#8fe04a;box-shadow:0 0 6px #8fe04a}#soulPips i.rs{border-color:#ffd27a;box-shadow:0 0 6px #ffd27a}
 #menu,#camp{background:#0b0d14 url(art/menu_bg.webp) center/cover no-repeat}
 #menu{flex-direction:column;gap:4px;overflow:auto;justify-content:safe center}
 #menu .logo{width:min(380px,72vw);max-height:15vh;object-fit:contain;filter:drop-shadow(0 6px 18px rgba(0,0,0,.8));flex:0 0 auto}
@@ -328,7 +330,7 @@ body:not(.is-touch) #buyBtn:disabled::after{display:none}
 
 <div class="hud">
   <div class="bars">
-    <div class="bar"><i id="hpF"></i><span id="hpT">100 / 100</span></div>
+    <div class="bar"><i id="hpF"></i><span id="hpT">100 / 100</span></div><div id="soulPips" style="display:none"></div>
     <div class="bar st" id="stBar"><i id="stF"></i></div>
     <div class="oil"><span class="flame" aria-hidden="true"></span><div class="bar oilbar" id="oilBar" title="Torch oil"><i id="oilF"></i></div></div>
     <div class="lvl" id="lvl"><b id="lvT">Lv 1</b><div class="bar xpbar" title="Experience"><i id="xpF"></i></div></div>
@@ -3565,7 +3567,7 @@ function upOpt(u) {
   const lv = (P.ups[u.id] || 0) + 1;
   const tag = u.cap ? `${KL[u.cap].name} mastery` : u.aff ? `${KL[u.aff].name} path` : 'Upgrade';
   const color = u.cap ? KL[u.cap].color : u.aff ? KL[u.aff].color : '#c9b8ff';
-  return { tag, name: `${u.name} ${RN[lv]}`, color, rc: u.aff || u.cap ? color : '', desc: fxDesc(u.fx, 1),
+  return { tag, name: `${u.name} ${RN[lv]}`, color, rc: u.aff || u.cap ? color : '', desc: u.rd ? u.rd(lv) : fxDesc(u.fx, 1),
     note: (u.aff ? `+2 ${KL[u.aff].name} affinity` : '') + (lv > 1 ? `${u.aff ? '. ' : ''}Level ${RN[lv - 1]} to ${RN[lv]}` : ''), pick: () => takeUp(u.id) };
 }
 const branches = () => (KL[P.klass].kids || []);
@@ -3731,14 +3733,14 @@ function spawnMinion(kind, at, life) {
   minions.push({ kind, md, pos: p, life: life || Infinity, cd: 0, walk: 0, facing: 0, beast: kind !== 'skel' });
   burst(p.clone().setY(.6), kind === 'fox' ? 0xffc870 : kind === 'wolf' ? 0x9ff0e0 : 0x8fe04a, 14, 3, 3); ringFx(p, kind === 'fox' ? 0xffc870 : kind === 'wolf' ? 0x9ff0e0 : 0x8fe04a, .2, 1.2, .3, .7);
 }
-function summonWolves() { const n = 2 + (P.ups.c_beast ? 1 : 0); for (let i = 0; i < n; i++) spawnMinion('wolf', P.pos.clone().add(new T.Vector3(Math.cos(i * 2.4) * 1.2, 0, Math.sin(i * 2.4) * 1.2))); }
+function summonWolves() { const n = 2; for (let i = 0; i < n; i++) spawnMinion('wolf', P.pos.clone().add(new T.Vector3(Math.cos(i * 2.4) * 1.2, 0, Math.sin(i * 2.4) * 1.2))); }
 function clearMinions() { minions.forEach(m => scene.remove(m.md.root)); minions = []; }
 function updateMinions(dt) {
   for (let i = minions.length - 1; i >= 0; i--) {
     const m = minions[i]; m.life -= dt;
-    if (m.life <= 0 || P.dead) { burst(m.pos.clone().setY(.6), 0x8fe04a, 10, 3, 2); scene.remove(m.md.root); minions.splice(i, 1); continue; }
+    if (m.life <= 0 || P.dead) { if (!P.dead) BUS.emit('summonExpire', { m }); burst(m.pos.clone().setY(.6), 0x8fe04a, 10, 3, 2); scene.remove(m.md.root); minions.splice(i, 1); continue; }
     let tgt = null, bd = 9;
-    for (const e of enemies) { if (e.dead || e.state === 'spawn') continue; const d = e.pos.distanceTo(m.pos); if (d < bd) { bd = d; tgt = e; } }
+    for (const e of enemies) { if (e.dead || e.state === 'spawn') continue; const d = e.pos.distanceTo(m.pos) - preyBias(m, e); if (d < bd) { bd = d; tgt = e; } }
     const goal = tgt ? tgt.pos : P.pos.clone().add(new T.Vector3(Math.cos(i * 2.1) * 1.4, 0, Math.sin(i * 2.1) * 1.4));
     const to = goal.clone().sub(m.pos).setY(0), d = to.length(), reach = tgt ? .75 + tgt.r : .4;
     let moving = false;
@@ -3746,9 +3748,11 @@ function updateMinions(dt) {
     m.pos.x = clamp(m.pos.x, -AX + .4, AX - .4); m.pos.z = clamp(m.pos.z, -AZ + .4, AZ - .4);
     m.cd -= dt;
     if (tgt && d <= reach + .1 && m.cd <= 0) {
-      m.cd = m.beast ? .75 : 1; m.facing = angTo(m.pos, tgt.pos);
-      const dmg = (m.kind === 'fox' ? 12 : m.beast ? 9 : 11) * 1.15;
-      SOFT = true; withTag('summon', m.kind || 'minion', () => hitEnemy(tgt, dmg, 2, false, m.pos, false)); SOFT = false; BUS.emit('summonHit', { e: tgt, m, dmg });
+      m.cd = (m.beast ? .75 : 1) * minionCd(m); m.facing = angTo(m.pos, tgt.pos);
+      const dmg = (m.kind === 'fox' ? 12 : m.beast ? 9 : 11) * 1.15 * minionMul(m);
+      if (m.alpha) { m.cd = 1.5; procHit(tgt, AP() * 1.8, { tag: 'summon', src: 'c_beast', kb: 4, from: m.pos }); sparkFx(tgt.pos.clone().setY(.8), 0xffd27a, 1.2); }
+      else { SOFT = true; withTag('summon', m.kind || 'minion', () => hitEnemy(tgt, dmg, 2, false, m.pos, false)); SOFT = false; }
+      BUS.emit('summonHit', { e: tgt, m, dmg });
       if (m.kind === 'wolf' && (K() === 'beastcaller' || bl('regen')) && P.hp < P.max) P.hp = Math.min(P.max, P.hp + 1);
       burst(tgt.pos.clone().setY(.7), m.kind === 'fox' ? 0xffc870 : m.beast ? 0x9ff0e0 : 0x8fe04a, 6, 3, 2);
     }
@@ -4751,7 +4755,7 @@ function updateStatuses(e, dt) {
 function stepEnemy(e, dt, rdt) {
   if (!e.dead && e.st) updateStatuses(e, rdt);
   else if (e.dead && e.stM) e.stM.visible = false;
-  if (!e.dead && e.state !== 'spawn' && hasSt(e, 'fear')) {
+  if (!e.dead && e.state !== 'spawn' && e.state !== 'stun' && hasSt(e, 'fear')) {
     const away = e.pos.clone().sub(P.pos).setY(0); if (away.lengthSq() < .01) away.set(1, 0, 0);
     away.normalize(); e.pos.addScaledVector(away, (e.def.speed || 2) * .9 * dt);
     e.pos.x = clamp(e.pos.x, -AX + .5, AX - .5); e.pos.z = clamp(e.pos.z, -AZ + .5, AZ - .5);
@@ -4792,6 +4796,222 @@ function watchHeal() {
   if (lastHp != null && P.max === lastMax && P.hp > lastHp) BUS.emit('heal', { amt: P.hp - lastHp });
   lastHp = P.hp; lastMax = P.max;
 }
+
+/* ---------- reworked records: shared helpers (Patch B/C) ---------- */
+const recLv = id => (P && P.ups && P.ups[id]) || 0;
+const pct = v => Math.round(v * 100) + '%';
+const rkv = (arr, lv) => arr[Math.max(0, Math.min(arr.length, lv || 1) - 1)];
+// swap an upgrade record to its new effect: same id, slot, affinity and art; new label if it has one
+function rework(id, rd) { const u = UPM[id]; u.fx = {}; u.rd = rd; u.live = true; if (LABEL[id]) { LIVE[id] = true; u.name = LABEL[id]; } }
+// listen while the record is owned; ctx.src === id is skipped by the bus (no self-trigger)
+function onRec(ev, id, fn, tags) { BUS.on(ev, c => fn(c, recLv(id)), { id, tags, when: () => recLv(id) > 0 }); }
+// cooldowns: actor-level and per-target
+function ready(key, s) { P.icd = P.icd || {}; if ((P.icd[key] || -99) > gameTime) return false; P.icd[key] = gameTime + s; return true; }
+function readyOn(e, key, s) { e.icd = e.icd || {}; if ((e.icd[key] || -99) > gameTime) return false; e.icd[key] = gameTime + s; return true; }
+function count(key, n) { P.cnt = P.cnt || {}; P.cnt[key] = (P.cnt[key] || 0) + 1; if (P.cnt[key] >= n) { P.cnt[key] = 0; return true; } return false; }
+const live = () => enemies.filter(e => !e.dead && e.state !== 'spawn');
+const nearby = (pos, r, skip) => live().filter(e => !(skip && skip.has ? skip.has(e) : skip === e) && Math.hypot(e.pos.x - pos.x, e.pos.z - pos.z) < r + e.r)
+  .sort((a, b) => a.pos.distanceTo(pos) - b.pos.distanceTo(pos));
+// a radial proc burst. Returns the enemies hit.
+function radial(pos, r, dmg, src, col = 0xffd27a, o = {}) {
+  ringFx(pos, col, .3, r, .3, .85); burst(pos.clone().setY(.5), col, 14, 5, 3); if (o.spark !== false) sparkFx(pos.clone().setY(.6), col, r * .7);
+  const hit = nearby(pos, r, o.skip); hit.forEach(e => procHit(e, dmg, { src, tag: o.tag || 'triggered', kb: o.kb || 3, from: pos })); return hit;
+}
+// an instant bolt from a point to an enemy (feathers, forks, skulls, shards)
+function zap(from, e, dmg, src, col, o = {}) {
+  if (!e || e.dead) return;
+  streak(from.clone().setY(o.y ?? 1), e.pos.clone().setY(.9), col, o.w || .18);
+  later(o.delay ?? .06, () => { if (e.dead) return; sparkFx(e.pos.clone().setY(.9), col, .8); procHit(e, dmg, { src, tag: o.tag || 'triggered', kb: o.kb || 1.5, from }); if (o.after) o.after(e); });
+}
+function healP(amt) { if (P.dead || amt <= 0 || P.hp >= P.max) return; const a = Math.min(P.max - P.hp, amt); P.hp += a; if (a >= 1) pop(P.pos, '+' + Math.round(a), 'heal'); }
+// ground hazards (patches, clouds, fields, trails) with owner, lifetime and cap
+let hazards = [];
+function addHazard(h) {
+  const same = hazards.filter(x => x.src === h.src);
+  if (h.max && same.length >= h.max) killHazard(same[0]);
+  h.tick = h.tick ?? 0; hazards.push(h); return h;
+}
+function killHazard(h) { if (h.mesh) scene.remove(h.mesh); if (h.end) h.end(h); hazards = hazards.filter(x => x !== h); }
+function updateHazards(dt) {
+  for (const h of hazards.slice()) {
+    h.t -= dt; h.tick -= dt;
+    if (h.update) h.update(h, dt);
+    if (h.tick <= 0 && h.every) { h.tick += h.every; h.fn(h); }
+    if (h.mesh && h.fade) h.mesh.material.opacity = h.fade * Math.min(1, h.t / .4);
+    if (h.t <= 0) killHazard(h);
+  }
+}
+function clearHazards() { hazards.slice().forEach(killHazard); hazards = []; }
+function decal(pos, r, col, op = .35) { const m = flat(new T.CircleGeometry(r, 32), decalMat(col, op)); m.position.set(pos.x, .04, pos.z); scene.add(m); return m; }
+// per-frame hooks for records that watch the world
+const REC_TICK = [];
+function updateRecs(dt) { updateHazards(dt); for (const f of REC_TICK) f(dt); }
+
+/* ---------- Mage tree (Patch B1) ---------- */
+const specRef = () => 10 * spPow() * sigPow() * apMul(); // your special's hit after multipliers (rule A base)
+// Kindle: burning enemies explode on death and spread Ember
+rework('kindle', lv => `Burning enemies explode on death for ${pct(rkv([.85, 1.15, 1.45], lv))} of your Attack Power and set nearby enemies alight.`);
+onRec('kill', 'kindle', (c, lv) => {
+  const e = c.e; if (!e.burn || !(e.burn.left > 0)) return;
+  const R = 2.5 + rkv([0, .25, .5], lv);
+  radial(e.pos, R, AP() * rkv([.85, 1.15, 1.45], lv), 'kindle', 0xff8a2a, { skip: e }).forEach(o => { if (!o.dead) ignite(o, L3([0, 12, 18, 24], Math.max(1, bl('ember')))); });
+});
+// Rime: frozen enemies shatter into 5 ice shards
+rework('rime', lv => `Frozen enemies shatter on death into 5 ice shards, each dealing ${pct(rkv([.55, .7, .85], lv))} of your Attack Power.`);
+onRec('kill', 'rime', (c, lv) => {
+  if (!c.frz) return;
+  const ts = nearby(c.e.pos, 6, c.e); if (!ts.length) return;
+  burst(c.e.pos.clone().setY(.8), 0xc8f4ff, 16, 6, 3);
+  for (let i = 0; i < 5; i++) zap(c.e.pos, ts[i % ts.length], AP() * rkv([.55, .7, .85], lv), 'rime', 0xc8f4ff, { delay: .05 + i * .04, y: .8 });
+});
+// Static: lightning on a Burning or Frozen enemy arcs once more
+rework('static', lv => `Lightning that strikes a Burning or Frozen enemy arcs to another enemy for ${pct(rkv([.35, .5, .65], lv))} of the strike.`);
+onRec('lightningHit', 'static', (c, lv) => {
+  const e = c.e; if (!(e.burn && e.burn.left > 0) && !(e.frozen && e.state === 'stun')) return;
+  const t = nearby(e.pos, 4.5, new Set([e, c.from]))[0]; if (!t || !e.lastHit) return;
+  zap(e.pos, t, e.lastHit.pre * rkv([.35, .5, .65], lv), 'static', 0xfff27a, { y: .9 });
+});
+// Soulguard Orbit: an orbiting spirit eats one enemy projectile, then bursts
+rework('sward', lv => `Each orbiting spirit can catch one enemy projectile, then bursts for ${pct(rkv([1.1, 1.4, 1.7], lv))} of your Attack Power.`);
+REC_TICK.push(() => {
+  const lv = recLv('sward'); if (!lv || !orbs.length) return;
+  for (const o of orbs) {
+    if (o.t <= 0) continue;
+    const p = o.m.position;
+    for (let i = arrows.length - 1; i >= 0; i--) {
+      const a = arrows[i]; if (a.friendly || Math.hypot(a.pos.x - p.x, a.pos.z - p.z) > .6) continue;
+      scene.remove(a.mesh); arrows.splice(i, 1); o.t = 0;
+      pop(p, 'Caught', 'info'); radial(new T.Vector3(p.x, 0, p.z), 1.5, AP() * rkv([1.1, 1.4, 1.7], lv), 'sward', 0x9fe3ff, { spark: true });
+      break;
+    }
+  }
+});
+// Soul Tether: every 3rd summon hit heals you and empowers the next summon hit
+rework('tether', lv => `Every 3rd hit by your summons heals you ${rkv([1.5, 1.5, 2], lv)}% of your health and makes their next hit ${pct(rkv([.25, .3, .35], lv))} stronger.`);
+BUS.on('summonHit', () => {
+  const lv = recLv('tether'); if (!lv || !count('tether', 3) || !ready('tether', 1)) return;
+  healP(P.max * rkv([.015, .015, .02], lv)); P.tetherEmp = rkv([.25, .3, .35], lv); burst(P.pos.clone().setY(1), 0x5fd0c0, 8, 3, 2);
+}, { id: 'tether' });
+// Runic Overflow: the Arcane Echo bolt leaves a rune that detonates 1s later
+rework('amast', lv => `Your Arcane Echo bolt leaves a rune that detonates a second later for ${pct(rkv([1.2, 1.5, 1.8], lv))} of that bolt.`);
+onRec('arcaneEcho', 'amast', (c, lv) => {
+  const pos = c.pos.clone().setY(0), m = flat(new T.RingGeometry(.9, 1.3, 6), decalMat(0x9a86ff, .8)); m.position.set(pos.x, .05, pos.z); scene.add(m);
+  addHazard({ src: 'amast', t: 1, mesh: m, update: h => { m.rotation.z += .05; }, end: () => radial(pos, 2, c.dmg * rkv([1.2, 1.5, 1.8], lv), 'amast', 0xb69cff) });
+});
+// Overflowing Mana: above 80% mana, your special spends 10 more to add 2 side bolts
+rework('font', lv => `If your mana is at least 80% when you cast your nova, it spends 10 more mana to fire 2 bolts at enemies for ${pct(rkv([.4, .5, .6], lv))} of the nova each.`);
+onRec('special', 'font', (c, lv) => {
+  if (P.cls !== 'mage' || !(P.preSt >= .8) || P.st < 10) return;
+  P.st -= 10; const ts = nearby(P.pos, 9); if (!ts.length) return;
+  for (let i = 0; i < 2; i++) zap(P.pos, ts[i % ts.length], specRef() * rkv([.4, .5, .6], lv), 'font', 0xb69cff, { delay: .08 + i * .08, w: .14 });
+});
+// Astral Flood (Mastery): every 3rd special is followed by two smaller echoes
+rework('c_arch', () => 'Every 3rd nova is followed by two echoes, at 35% and then 20% strength, 0.4 seconds apart.');
+onRec('special', 'c_arch', () => {
+  if (P.cls !== 'mage' || !count('c_arch', 3)) return;
+  later(.4, () => { if (!P.dead) withTag('triggered', 'c_arch', () => novaAt(.35, true)); });
+  later(.8, () => { if (!P.dead) withTag('triggered', 'c_arch', () => novaAt(.2, true)); });
+});
+// Conductor: lightning makes enemies Conductive; a second strike forks to 2 targets
+rework('conduct', lv => `Lightning makes enemies Conductive for 3 seconds. Striking a Conductive enemy again forks to 2 more enemies for ${pct(rkv([.45, .55, .65], lv))} of the strike.`);
+onRec('lightningHit', 'conduct', (c, lv) => {
+  const e = c.e;
+  if (hasSt(e, 'conductive') && e.lastHit && readyOn(e, 'conduct', 1.5)) nearby(e.pos, 5, new Set([e, c.from])).slice(0, 2).forEach((t, i) => zap(e.pos, t, e.lastHit.pre * rkv([.45, .55, .65], lv), 'conduct', 0x9fe8ff, { delay: .05 + i * .05, y: .9 }));
+  if (!e.dead) addStatus(e, 'conductive', 3);
+});
+// Voltage Trail: blinking leaves an electrified trail; the first enemy to cross it is struck
+rework('tstep', lv => `Blinking leaves an electrified trail for 2 seconds. The first enemy to cross it is struck for ${pct(rkv([1.15, 1.5, 1.85], lv))} of your Attack Power. Once every 5 seconds.`);
+onRec('dodgeStart', 'tstep', c => { P.blinkFrom = c.pos.clone().setY(0); });
+onRec('dodgeEnd', 'tstep', (c, lv) => {
+  if (P.cls !== 'mage' || !P.blinkFrom || !ready('tstep', 5)) return;
+  const a = P.blinkFrom.clone(), b = c.pos.clone().setY(0), d = b.clone().sub(a); let L = d.length();
+  if (L < 2.5) { const dir = L > .01 ? d.normalize() : dirOf(P.facing); a.copy(b).addScaledVector(dir, -2.5); L = 2.5; }
+  const mid = a.clone().add(b).multiplyScalar(.5), m = flat(new T.PlaneGeometry(.5, L), decalMat(0x9fe8ff, .7));
+  m.position.set(mid.x, .05, mid.z); m.rotation.z = -Math.atan2(b.x - a.x, b.z - a.z); scene.add(m);
+  const seg = b.clone().sub(a), len2 = seg.lengthSq() || 1;
+  addHazard({ src: 'tstep', t: 2, mesh: m, fade: .7, max: 1, update: h => {
+    if (Math.random() < .5) burst(a.clone().lerp(b, Math.random()).setY(.2), 0x9fe8ff, 1, 1, 1);
+    for (const e of live()) {
+      const k = clamp(e.pos.clone().sub(a).dot(seg) / len2, 0, 1), q = a.clone().addScaledVector(seg, k);
+      if (Math.hypot(e.pos.x - q.x, e.pos.z - q.z) < .6 + e.r) { streak(e.pos.clone().setY(5), e.pos.clone().setY(.6), 0xfff6b0, .16); procHit(e, AP() * rkv([1.15, 1.5, 1.85], lv), { src: 'tstep', kb: 3 }); ringFx(e.pos, 0xfff27a, .3, 1.4, .25, .8); h.t = 0; break; }
+    }
+  } });
+});
+// Supercell: every 10 chain-lightning jumps drop an orb on the densest group
+rework('supercell', lv => `Every 10 chain lightning jumps charge a Supercell that drops on the thickest group for ${pct(rkv([3.2, 3.85, 4.5], lv))} of your Attack Power.`);
+onRec('lightningJump', 'supercell', (c, lv) => {
+  if (P.scFloor !== floor) { P.scFloor = floor; P.cnt = P.cnt || {}; P.cnt.supercell = 0; }
+  if (!count('supercell', 10) || hazards.some(h => h.src === 'supercell')) return;
+  const all = live(); if (!all.length) return;
+  const tgt = all.map(e => [e, all.filter(o => o.pos.distanceTo(e.pos) < 3).length]).sort((a, b) => b[1] - a[1])[0][0], pos = tgt.pos.clone().setY(0);
+  pop(P.pos, 'Supercell', 'info');
+  addHazard({ src: 'supercell', t: .6, mesh: decal(pos, 3, 0x9fe8ff, .25), end: () => { streak(pos.clone().setY(7), pos.clone().setY(.3), 0xfff6b0, .35); flashScreen('#cfefff', .15, .25); shake = Math.max(shake, .3); radial(pos, 3, AP() * rkv([3.2, 3.85, 4.5], lv), 'supercell', 0x9fe8ff, { kb: 6 }); } });
+});
+// Eye of the Storm (Mastery): every 12 lightning strikes summon a following thundercloud
+rework('c_storm', () => 'Every 12 lightning strikes summon a thundercloud that follows you for 6 seconds, striking an enemy every 0.8 seconds for 115% of your Attack Power.');
+onRec('lightningHit', 'c_storm', () => {
+  if (!count('c_storm', 12)) return;
+  const old = hazards.find(h => h.src === 'c_storm'); if (old) { old.t = 6; return; }
+  const g = new T.Group(); for (let i = 0; i < 5; i++) { const s = new T.Mesh(new T.SphereGeometry(rand(.35, .55), 8, 6), basic(0x3a4458, { transparent: true, opacity: .85 })); s.position.set(rand(-.6, .6), rand(-.1, .15), rand(-.4, .4)); g.add(s); }
+  scene.add(g); pop(P.pos, 'Eye of the Storm', 'info');
+  addHazard({ src: 'c_storm', t: 6, mesh: g, every: .8, tick: .3, update: () => g.position.set(P.pos.x, 3.6, P.pos.z),
+    fn: () => { const t = nearby(P.pos, 7)[0]; if (t) { streak(g.position.clone(), t.pos.clone().setY(.6), 0xfff6b0, .14); procHit(t, AP() * 1.15, { src: 'c_storm', kb: 2 }); ringFx(t.pos, 0xfff27a, .3, 1.2, .2, .8); } } });
+});
+// Plague Lord: poisoned enemies leave a miasma cloud when they die
+rework('plord', lv => `A Poisoned enemy that dies leaves a miasma cloud for ${rkv([3, 4, 4], lv)} seconds that adds ${rkv([1, 1, 2], lv)} Poison ${lv >= 3 ? 'stacks' : 'stack'} per second to enemies inside. Once every 4 seconds.`);
+onRec('kill', 'plord', (c, lv) => {
+  const e = c.e; if (!(e.poison && e.poison.stacks > 0) || !ready('plord', 4)) return;
+  const pos = e.pos.clone().setY(0), per = Math.max(2, e.poison.per || 2);
+  addHazard({ src: 'plord', t: rkv([3, 4, 4], lv), mesh: decal(pos, 2.5, 0x8fe04a, .3), fade: .3, every: 1,
+    update: () => { if (Math.random() < .3) burst(pos.clone().add(new T.Vector3(rand(-2, 2), .3, rand(-2, 2))), 0x8fe04a, 1, .5, .8); },
+    fn: () => nearby(pos, 2.5).forEach(o => poisonE(o, rkv([1, 1, 2], lv), per)) });
+});
+// Harvest of Souls: your special spends Souls above the reserve, one homing skull each
+rework('ghunger', lv => `Kills gather Souls (max 3; Poisoned or Hexed kills count double, 8 kills per Soul). Your nova spends them: one homing skull per Soul for ${pct(rkv([1.25, 1.55, 1.85], lv))} of your Attack Power, each healing you 1.5%.`);
+onRec('special', 'ghunger', (c, lv) => {
+  const n = SOUL.spend(3); if (!n) return;
+  const ts = nearby(P.pos, 10); if (!ts.length) { P.souls += n; return; }
+  for (let i = 0; i < n; i++) zap(P.pos, ts[i % ts.length], AP() * rkv([1.25, 1.55, 1.85], lv), 'ghunger', 0x8fe04a, { delay: .1 + i * .12, w: .16, after: () => healP(P.max * .015) });
+});
+// Lich Form (Mastery): skeletons Hex, burst when they fall, and 3+ skeletons make bolts pierce
+rework('c_necro', () => 'Your skeletons Hex what they hit and burst for 150% of your Attack Power when they fall. While 3 or more stand, your bolts pierce an extra enemy.');
+BUS.on('summonHit', c => { if (recLv('c_necro') && c.m && c.m.kind === 'skel' && !c.e.dead) c.e.curse = { t: 4, amt: Math.max(.15, c.e.curse ? c.e.curse.amt : 0) }; }, { id: 'c_necro_hex' });
+BUS.on('summonExpire', c => { if (recLv('c_necro') && c.m.kind === 'skel') radial(c.m.pos.clone().setY(0), 2, AP() * 1.5, 'c_necro', 0x8fe04a); }, { id: 'c_necro' });
+const lichPierce = () => recLv('c_necro') && minions.filter(m => m.kind === 'skel').length >= 3 ? 1 : 0;
+// Pack Instinct: your hits mark Prey; wolves hunt it and their bites on Prey cleave
+rework('pbond', lv => `Enemies you hit become Prey for 4 seconds. Your wolves hunt Prey, and their bites on it also hit up to 2 nearby enemies for ${pct(rkv([.6, .75, .9], lv))} of the bite.`);
+onRec('hit', 'pbond', c => { if (!c.e.dead) addStatus(c.e, 'prey', 4); });
+BUS.on('summonHit', c => {
+  const lv = recLv('pbond'); if (!lv || !c.m || c.m.kind !== 'wolf' || !hasSt(c.e, 'prey') || !c.e.lastHit) return;
+  nearby(c.e.pos, 1.8, c.e).slice(0, 2).forEach(o => { procHit(o, c.e.lastHit.pre * rkv([.6, .75, .9], lv), { tag: 'summon', src: 'pbond', kb: 2, from: c.e.pos }); burst(o.pos.clone().setY(.7), 0xc9a060, 5, 3, 2); });
+}, { id: 'pbond_cleave' });
+const preyBias = (m, e) => m.kind === 'wolf' && hasSt(e, 'prey') ? 6 : 0;
+// Savage Howl: your howl empowers wolves and fears nearby enemies
+rework('howl', lv => `Your howl makes your wolves bite 25% faster and ${pct(rkv([.15, .2, .25], lv))} harder for 4 seconds, and Fears nearby enemies for ${rkv([.8, 1, 1.2], lv)} seconds.`);
+onRec('special', 'howl', (c, lv) => {
+  if (K() !== 'beastcaller') return;
+  P.howlT = 4; P.howlAmt = rkv([.15, .2, .25], lv);
+  nearby(P.pos, 4.5).forEach(e => addStatus(e, 'fear', rkv([.8, 1, 1.2], lv) + (e.state === 'stun' ? e.t : 0)));
+});
+REC_TICK.push(dt => { if (P.howlT > 0) P.howlT -= dt; });
+const minionMul = m => (m.kind === 'wolf' && P.howlT > 0 ? 1 + (P.howlAmt || 0) : 1);
+const minionCd = m => (m.kind === 'wolf' && P.howlT > 0 ? .8 : 1);
+// Alpha Call (Mastery): two wolves biting one enemy within 1s call an Alpha spirit
+rework('c_beast', () => 'When two wolves bite the same enemy within a second, an Alpha spirit joins for 5 seconds, pouncing every 1.5 seconds for 180% of your Attack Power. Once every 12 seconds.');
+BUS.on('summonHit', c => {
+  if (!recLv('c_beast') || !c.m || c.m.kind !== 'wolf' || c.m.alpha) return;
+  const w = c.e.wolfBite; c.e.wolfBite = { m: c.m, t: gameTime };
+  if (!w || w.m === c.m || gameTime - w.t > 1 || minions.some(m => m.alpha) || !ready('c_beast', 12)) return;
+  spawnMinion('wolf', c.e.pos.clone().add(new T.Vector3(1, 0, 0)), 5);
+  const a = minions[minions.length - 1]; a.alpha = true; a.md.root.scale.setScalar(1.45);
+  a.md.root.traverse(o => { if (o.material && o.material.color) { o.material = o.material.clone(); o.material.color.lerp(new T.Color(0xffd27a), .5); } });
+  pop(a.pos, 'Alpha', 'crit'); ringFx(a.pos, 0xffd27a, .3, 2.2, .4, .9);
+}, { id: 'c_beast' });
+// Soul pips under the health bar
+REC_TICK.push(() => {
+  const el = $('soulPips'); if (!el) return; const on = SOUL.on(); el.style.display = on ? '' : 'none';
+  if (on) { const s = P.souls || 0, r = SOUL.reserve(), k = s + ':' + r; if (el.dataset.k !== k) { el.dataset.k = k; el.innerHTML = [0, 1, 2].map(i => `<i class="${i < s ? 'on' : ''}${i < r && i < s ? ' rs' : ''}"></i>`).join(''); } }
+});
 
 /* ---------- game state ---------- */
 const TYPES = {
@@ -5154,10 +5374,10 @@ function castFireball() {
   const dir = aimDir(start, 12);
   P.facing = Math.atan2(dir.x, dir.z);
   const ball = () => { const c1 = eCol(0xb69cff), c2 = eCol(0xb69cff), g = new T.Group(); g.add(new T.Mesh(fireGeo, basic(c1, { fog: false })), new T.Mesh(fireCoreGeo, basic(0xffffff, { fog: false })), halo(c2, 1.3, .75)); g.userData.c = c1; return g; };
-  const pn = L3([0, 1, 2, 3], bl('pierce')), fr = (1 + Math.min(.6, .08 * elemLv('fire'))) * (hm('bigbang') ? 1.5 : 1), bb = hm('bigbang') ? 1.3 : 1;
+  const pn = L3([0, 1, 2, 3], bl('pierce')) + lichPierce(), fr = (1 + Math.min(.6, .08 * elemLv('fire'))) * (hm('bigbang') ? 1.5 : 1), bb = hm('bigbang') ? 1.3 : 1;
   const b0 = ball();
   const ek = P.echoNext ? 1 : 0; if (ek) { b0.scale.setScalar(1.45); pop(P.pos, 'Arcane Echo', 'info'); }
-  shoot({ pos: start, dir, speed: 11, friendly: true, src: 'attack', dmg: 0, life: 1.3, explode: { r: 1.6 * fr * (ek ? 1.4 : 1), dmg: 28 * bb * (ek ? 1.5 : 1), c: b0.userData.c }, pierceN: pn, trail: b0.userData.c, mesh: b0, fire: true });
+  shoot({ pos: start, dir, speed: 11, friendly: true, src: 'attack', dmg: 0, life: 1.3, explode: { r: 1.6 * fr * (ek ? 1.4 : 1), dmg: 28 * bb * (ek ? 1.5 : 1), c: b0.userData.c, ek }, pierceN: pn, trail: b0.userData.c, mesh: b0, fire: true });
   const extra = L3([0, 1, 2, 3], bl('multi')), base = Math.atan2(dir.x, dir.z);
   for (let i = 1; i <= extra; i++) {
     const m = ball(); m.scale.setScalar(.75);
@@ -5196,7 +5416,7 @@ function frostNova() {
   P.bufSkill = 0;
   if (P.skillCd > 0) return;
   if (P.st < 35) { flagStamina(); return; }
-  P.st -= 35; P.stDelay = .5; P.skillCd = CLASSES.mage.skillCd * spCdMul();
+  P.preSt = P.st / P.stMax; P.st -= 35; P.stDelay = .5; P.skillCd = CLASSES.mage.skillCd * spCdMul();
   novaAt(1, false);
   if (bl('echo')) later(1, () => { if (!P.dead) novaAt(echoPow(), true); });
 }
@@ -5227,6 +5447,7 @@ function hitEnemy(e, dmg, kb, heavy, from, proc = true) {
   const raw = !!PX, hp0 = e.hp / e.max;
   const stunned = e.state === 'stun';
   let mul = (raw ? 1 : P.dmgMul) * (stunned ? 1.5 : 1) * exposedMul(e);
+  if (P.tetherEmp > 0 && ((HT && HT.tag === 'summon') || (PX && PX.tag === 'summon'))) { mul *= 1 + P.tetherEmp; P.tetherEmp = 0; }
   const atk = proc && HS === 'attack', sp = proc && HS === 'special';
   if (e.curse) mul *= 1 + e.curse.amt;
   if (!raw) {
@@ -5292,7 +5513,7 @@ function hitEnemy(e, dmg, kb, heavy, from, proc = true) {
     if (gc('chime') && Math.random() < .2) lightning(e, gc('chime'));
     if (gc('bomb') && !e.bomb && Math.random() < .08 * gc('bomb')) { e.bomb = 1; pop(e.pos, 'Bomb', 'info'); }
   }
-  e.lastHit = { tag: PX ? PX.tag : HT ? HT.tag : atk ? 'attack' : sp ? 'special' : 'other', src: PX ? PX.src : HT ? HT.src : null, pre: dmg * preMul, hp0, crit, depth: PX ? PX.depth : 0 };
+  e.lastHit = { tag: PX ? PX.tag : HT ? HT.tag : atk ? 'attack' : sp ? 'special' : 'other', src: PX ? PX.src : HT ? HT.src : null, pre: dmg * preMul, hp0, crit, depth: PX ? PX.depth : 0, frz: stunned && !!e.frozen };
   { const c_ = Object.assign({ e, dmg: dmg * preMul, final: d, heavy }, e.lastHit); BUS.emit('hit', c_); if (crit) BUS.emit('crit', c_); }
   if (e.hp <= 0 && !e.dead) killEnemy(e);
 }
@@ -5594,6 +5815,7 @@ function fireArrow(e) {
   shoot({ pos: e.pos.clone().addScaledVector(d, .5).setY(.9), dir: d, speed: fire ? 10 : 13, friendly: false, dmg: Math.round(12 * (e.def.dmgMul || 1)), owner: e,
     trail: sc || (fire ? 0xff6a2a : 0), mesh: fire ? glowMesh(fireCoreGeo, sc || 0xff7a30, .9) : new T.Mesh(arrowGeo, basic(sc || 0xe8dcc0, { fog: false })) });
 }
+function echoBoom(a) { if (a.explode && a.explode.ek && !a.ekDone) { a.ekDone = 1; BUS.emit('arcaneEcho', { pos: a.pos.clone(), dmg: a.explode.dmg * apMul() }); } }
 function updateArrows(dt) {
   let fireLit = null;
   for (let i = arrows.length - 1; i >= 0; i--) {
@@ -5614,7 +5836,7 @@ function updateArrows(dt) {
         if (e.dead || e.state === 'spawn' || a.hitSet.has(e)) continue;
         if (Math.hypot(a.pos.x - e.pos.x, a.pos.z - e.pos.z) < e.r + .25) {
           if (a.explode) {
-            if (a.pierceN > 0) { a.pierceN--; a.hitSet.add(e); HS = a.src || null; explode(a.pos, a.explode.r, a.explode.dmg, a.explode.c); HS = null; continue; }
+            if (a.pierceN > 0) { a.pierceN--; a.hitSet.add(e); HS = a.src || null; explode(a.pos, a.explode.r, a.explode.dmg, a.explode.c); HS = null; echoBoom(a); continue; }
             gone = true; boom = true; break;
           }
           if (a.src === 'bounce') SOFT = true;
@@ -5626,7 +5848,7 @@ function updateArrows(dt) {
     }
     if (!gone && a.trail && Math.random() < .7) burst(a.pos, a.trail, 1, .6, .3);
     if (!gone && a.fire) fireLit = a.pos;
-    if (gone) { if (boom) { HS = a.src || null; explode(a.pos, a.explode.r, a.explode.dmg, a.explode.c); HS = null; } scene.remove(a.mesh); arrows.splice(i, 1); }
+    if (gone) { if (boom) { HS = a.src || null; explode(a.pos, a.explode.r, a.explode.dmg, a.explode.c); HS = null; echoBoom(a); } scene.remove(a.mesh); arrows.splice(i, 1); }
   }
   if (fireLit && fxFlash < 1.6) { fxLight.position.set(fireLit.x, 1.1, fireLit.z); fxFlash = 1.6; }
 }
@@ -6291,7 +6513,7 @@ function renderSheet() {
   } else cls += `<h3>Evolution</h3><p class="sh-note">Final class reached. Mastery upgrades now appear on level up.</p>`;
 
   const ul = Object.entries(P.ups);
-  const ups = ul.length ? ul.map(([id, lv]) => { const u = UPM[id], c = u.cap ? KL[u.cap].color : u.aff ? KL[u.aff].color : '#b9a6f0', t = u.cap ? `${KL[u.cap].name} mastery` : u.aff ? `${KL[u.aff].name} path` : 'General'; return `<div class="sh-up" style="--c:${c}"><b>${u.name} ${RN[lv]}<em>${t}</em></b><span>${fxSelf(u.fx, lv)}</span></div>`; }).join('') : '<p class="sh-note">None yet. Every level up offers one.</p>';
+  const ups = ul.length ? ul.map(([id, lv]) => { const u = UPM[id], c = u.cap ? KL[u.cap].color : u.aff ? KL[u.aff].color : '#b9a6f0', t = u.cap ? `${KL[u.cap].name} mastery` : u.aff ? `${KL[u.aff].name} path` : 'General'; return `<div class="sh-up" style="--c:${c}"><b>${u.name} ${RN[lv]}<em>${t}</em></b><span>${u.rd ? u.rd(lv) : fxSelf(u.fx, lv)}</span></div>`; }).join('') : '<p class="sh-note">None yet. Every level up offers one.</p>';
 
   let inv = `<h3>Relics</h3>` + (P.relicIds.length ? P.relicIds.map(id => { const r = RELICS[id]; return `<div class="sh-inv">${ICON['r_' + id] ? `<img src="${ICON['r_' + id]}" alt="">` : '<i></i>'}<div><b>${r.name}</b><span>${r.d || fxSelf(r.fx, 1)}${resonanceOf(id) ? ` <em style="color:#a0601a;font-style:normal">Resonance (${ULT[resonanceOf(id)].n}${resonanceOf(id) === P.klass ? ', active' : ''}): ${ULT[resonanceOf(id)].res[id]}</em>` : ''}</span></div></div>`; }).join('') : '<p class="sh-note">None yet. Bosses, relic rooms and the shop offer them.</p>');
   const gl = Object.entries(P.gear);
@@ -6345,7 +6567,7 @@ function banner(text, sub = '') { $('bannerT').textContent = text; $('bannerS').
 function spawnWave(list) { list.forEach((t, i) => spawnQueue.push({ type: t, at: gameTime + .7 + i * .35 })); }
 
 function enterRoom(k, fromDir) {
-  clearStatusMarkers(); BUS.emit('roomEnter', { k });
+  clearStatusMarkers(); clearHazards(); BUS.emit('roomEnter', { k });
   if (cur && cur.reaper) cur.reaper = false; // fleeing sends the Reaper away
   clearWorld();
   cur = rooms[k]; cur.visited = true;
@@ -6669,7 +6891,7 @@ function loop() {
     updateRoom(dt);
     updateLoot(dt);
     updateBlasts(dt);
-    updateOrbs(dt); updateWard(dt); watchHeal(); if (P.deadeyeT > 0) P.deadeyeT -= dt;
+    updateOrbs(dt); updateRecs(dt); updateWard(dt); watchHeal(); if (P.deadeyeT > 0) P.deadeyeT -= dt;
     updateMinions(dt); updateGroves(dt); if (P.rageT > 0) P.rageT -= dt;
     updateTimers(dt);
     updateTraps(dt);

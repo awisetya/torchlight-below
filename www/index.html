@@ -257,6 +257,22 @@ html,body{touch-action:none;overscroll-behavior:none;-webkit-text-size-adjust:10
 button{touch-action:manipulation}
 @media (max-width:560px){.sh-stats{grid-template-columns:repeat(2,1fr)}}
 .pop.heal{color:#7fe08a}
+#ctlHint{position:fixed;left:50%;bottom:22%;transform:translate(-50%,10px);max-width:min(560px,86vw);background:rgba(10,8,14,.82);color:#f2e8d6;border:1px solid rgba(255,210,122,.35);border-radius:12px;padding:10px 14px;font:600 14px/1.35 system-ui,sans-serif;text-align:center;opacity:0;pointer-events:none;transition:opacity .4s,transform .4s;z-index:30}
+#ctlHint.on{opacity:1;transform:translate(-50%,0)}
+#cxTabs{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px}#cxTabs button{font:inherit;font-weight:700;font-size:13px;padding:6px 12px;border-radius:999px;border:2px solid var(--edge);background:transparent;color:inherit;cursor:pointer}#cxTabs button.on{background:#e3a64a;border-color:#e3a64a;color:#1c140c}
+#talents.cx-items,#talents.cx-relics,#talents.cx-enemies,#talents.cx-effects{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px}
+#talents h4{grid-column:1/-1;margin:8px 0 0;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.cxc{display:flex;gap:10px;align-items:flex-start;border:2px solid var(--edge);border-left:4px solid var(--c,#c4b08a);border-radius:10px;padding:8px 10px;text-align:left}
+.cxc img{width:42px;height:42px;object-fit:contain;flex:none}.cxc b{display:block;font-size:14.5px}.cxc small{display:block;font-size:11.5px;color:var(--muted);margin:1px 0 3px}.cxc span{display:block;font-size:12.5px;line-height:1.35}
+.cxc em{display:block;font-size:12px;font-style:normal;color:#9a6a1a;margin-top:4px;line-height:1.3}.cxc.locked{opacity:.5}.cxq{width:42px;height:42px;flex:none;border-radius:8px;background:rgba(0,0,0,.12);display:grid;place-items:center;font-style:normal;font-weight:800;color:var(--muted)}.cxq.gl{background:color-mix(in srgb,var(--c) 22%,transparent);color:#4a3a28;font-size:22px}
+.cxc.fx{border-left-width:2px}.cxdot{width:14px;height:14px;border-radius:50%;flex:none;margin-top:3px;box-shadow:0 0 6px rgba(0,0,0,.25)}
+#talents .cx.has-pt{cursor:pointer}
+#cxDetail{display:none}#cxDetail.on{display:block;position:fixed;inset:0;z-index:40;background:rgba(8,6,10,.6);padding:4vh 4vw;overflow:auto}
+.cxd{max-width:640px;margin:0 auto;background:#e8dfcc;color:#2a2018;border:3px solid var(--c);border-radius:16px;padding:16px;display:grid;grid-template-columns:150px 1fr;gap:14px;text-align:left}
+.cxd>img{width:150px;border-radius:12px}.cxd-n{font-size:24px;color:var(--c);filter:brightness(.7)}.cxd small{display:block;color:#7a6a58;font-size:12.5px}.cxd p{margin:8px 0;font-size:14px;line-height:1.4}
+.cxd-r{margin:8px 0;font-size:13.5px;line-height:1.35}.cxd-r small{text-transform:uppercase;letter-spacing:.06em;font-size:10.5px}.cxd-r b{display:block}.cxd-k{color:#7a6a58}
+.cxd .go{grid-column:1/-1;justify-self:center}
+@media (max-width:560px){.cxd{grid-template-columns:1fr}.cxd>img{width:120px}}
 #buildHud{display:flex;gap:6px;margin:3px 0 0 2px;flex-wrap:wrap}#buildHud .bh{position:relative;font:700 10px/1 system-ui,sans-serif;color:#fff;background:rgba(0,0,0,.45);border-radius:6px;padding:3px 6px 5px;overflow:hidden}#buildHud .fr b{color:#ff9ad0}#buildHud .fr i{position:absolute;left:0;bottom:0;height:2px;background:#e07aff}#buildHud .tr b{color:#cfd6e0}
 #soulPips{display:flex;gap:5px;margin:3px 0 0 2px}#soulPips i{width:11px;height:11px;border-radius:50%;border:1.5px solid #8fe04a;background:rgba(0,0,0,.35)}#soulPips i.on{background:#8fe04a;box-shadow:0 0 6px #8fe04a}#soulPips i.rs{border-color:#ffd27a;box-shadow:0 0 6px #ffd27a}
 #menu,#camp{background:#0b0d14 url(art/menu_bg.webp) center/cover no-repeat}
@@ -329,6 +345,7 @@ body:not(.is-touch) #buyBtn:disabled::after{display:none}
 <div id="tags"></div>
 <div id="doortags"></div>
 
+<div id="ctlHint"></div>
 <div class="hud">
   <div class="bars">
     <div class="bar"><i id="hpF"></i><span id="hpT">100 / 100</span></div><div id="soulPips" style="display:none"></div><div id="buildHud"></div>
@@ -373,7 +390,7 @@ body:not(.is-touch) #buyBtn:disabled::after{display:none}
     </div>
     <p id="howTo"></p>
     <p class="rotate">Turn your phone sideways for the best view.</p>
-    <div class="row"><button class="go" id="startBtn">Start fight</button><button class="go alt" id="campBtn">Class Codex</button></div>
+    <div class="row"><button class="go" id="startBtn">Start fight</button><button class="go alt" id="campBtn">Codex</button></div>
     <p class="sub embl" id="menuEmb"></p>
     <button class="soundBtn" id="soundBtn">Sound: on</button>
   </div>
@@ -418,7 +435,7 @@ body:not(.is-touch) #buyBtn:disabled::after{display:none}
     <div class="row">
       <button class="go" id="againBtn">Same class</button>
       <button class="go alt" id="classBtn">Change class</button>
-      <button class="go alt" id="heroBtn">Class Codex</button>
+      <button class="go alt" id="heroBtn">Codex</button>
     </div>
   </div>
 </div>
@@ -430,7 +447,7 @@ body:not(.is-touch) #buyBtn:disabled::after{display:none}
     <p class="embl" id="winE"></p>
     <p class="sub">Your class is recorded in the Codex. Try another path next time.</p>
     <div class="row">
-      <button class="go alt" id="winCamp">Class Codex</button>
+      <button class="go alt" id="winCamp">Codex</button>
       <button class="go" id="winGo">Choose class</button>
     </div>
   </div>
@@ -438,10 +455,11 @@ body:not(.is-touch) #buyBtn:disabled::after{display:none}
 
 <div class="screen" id="camp">
   <div class="card wide">
-    <h2>Class Codex</h2>
-    <p class="sub">Every class you evolve into is recorded here for good. Discovering a final class also adds its relic to the pool.</p>
-    <p class="embl"><b id="embT">0</b> classes discovered</p>
-    <div id="talents"></div>
+    <h2>Codex</h2>
+    <p class="sub">Everything you have met in the dark, recorded for good. Tap a discovered class for its full kit.</p>
+    <div id="cxTabs"></div>
+    <p class="embl"><b id="embT">0</b><span id="embL"> classes discovered</span></p>
+    <div id="talents"></div><div id="cxDetail"></div>
     <div class="row">
       <button class="go alt" id="campBack">Back</button>
       <button class="go" id="campStart">Start run</button>
@@ -3675,7 +3693,7 @@ function evolveOptions() {
 }
 function evoCard(id, eligible) {
   const k = KL[id], pts = P.aff[id] || 0;
-  return { tag: `Evolve · ${eligible ? 'path open' : 'strongest path'}`, name: k.name, color: k.color, rc: k.color, img: PORTRAIT[id],
+  return { tag: `Evolve · ${eligible ? 'path open' : 'strongest path'}`, name: k.name, color: k.color, rc: k.color, img: clsArt(id),
     desc: `<b>${k.sig}.</b> ${k.sigD} <b>${k.pas}.</b> ${k.pasD}`, note: `${pts} ${k.name} affinity${CODEX.disc[id] ? '' : ' · undiscovered'}`, pick: () => evolveTo(id) };
 }
 function openEvolution() {
@@ -3966,7 +3984,7 @@ function stageClear(boss) {
 // ----- evolution reveal -----
 function evoReveal(k, first) {
   const el = $('evoReveal');
-  el.querySelector('img').src = PORTRAIT[P.klass];
+  el.querySelector('img').src = clsArt(P.klass);
   el.querySelector('small').textContent = first ? 'A new path, recorded in your Codex' : 'You evolve';
   el.querySelector('b').textContent = k.name;
   el.querySelector('span').innerHTML = `<img class="ski" src="art/skills/${P.klass}.webp" alt="">New special: <em>${k.sig}</em>`;
@@ -5476,6 +5494,135 @@ REC_TICK.push(() => {
   const k = fr + tr; if (el.dataset.k !== k) { el.dataset.k = k; el.innerHTML = k; }
 });
 
+/* ---------- Codex: classes, items, relics, enemies, effects ---------- */
+CODEX.seen = CODEX.seen || { i: {}, r: {}, e: {} };
+['i', 'r', 'e'].forEach(k => { CODEX.seen[k] = CODEX.seen[k] || {}; });
+function seeCx(kind, id) { if (!id || CODEX.seen[kind][id]) return; CODEX.seen[kind][id] = 1; saveCodex(); }
+// class icons: art/class/<id>.webp when present, otherwise the portrait
+const CLASS_ICON = {};
+Object.keys(KL).forEach(id => { const im = new Image(); im.onload = () => { CLASS_ICON[id] = im.src; const b = document.querySelector(`.cls[data-c="${KIT_OF_BASE[id] || ''}"] img.pt`); if (b) b.src = im.src; }; im.src = `art/class/${id}.webp`; });
+const KIT_OF_BASE = { fighter: 'knight', archer: 'hunter', mage: 'mage' };
+const clsArt = id => CLASS_ICON[id] || PORTRAIT[id];
+
+// enemies: display data (mechanics match the game)
+const STAGE_N = ['The Crypt', 'The Ember Depths', 'The Frozen Halls', 'The Void Spire', 'The Lightless Throne'];
+const CX_EN = [
+  { k: 'goblin', n: 'Crypt Goblin', st: 0, t: 'Swarmer', d: 'Quick, frail and never alone. Kill them before they surround you.' },
+  { k: 'archer', n: 'Bone Archer', st: 0, t: 'Shooter', d: 'Keeps its distance and fires single arrows. Close the gap or dodge through the shot.' },
+  { k: 'orc', n: 'Crypt Orc', st: 0, t: 'Heavy', d: 'Slow, tough and hard to stagger. Its wind-up is long: dodge, then punish.' },
+  { k: 'boss', n: 'The Warden', st: 0, t: 'Boss', d: 'Guards the way out of the Crypt. Slams the ground, charges across the room and roars to call help.' },
+  { k: 'skitter', n: 'Ember Skitter', st: 1, t: 'Swarmer', d: 'Faster and frailer than a goblin, and burns on death. Pull them into your area attacks.' },
+  { k: 'imp', n: 'Fire Imp', st: 1, t: 'Shooter', d: 'Throws fireballs that hit harder than arrows. A priority target.' },
+  { k: 'brute', n: 'Magma Brute', st: 1, t: 'Heavy', d: 'A tougher orc that hits harder. Never trade blows with it head-on.' },
+  { k: 'guardian@1', n: 'The Cinder King', st: 1, t: 'Boss', d: 'Rains volleys of fire, makes the floor erupt beneath you, blinks away and heals itself. Stay mobile.' },
+  { k: 'icegob', n: 'Frost Goblin', st: 2, t: 'Swarmer', d: 'Its hits chill you, slowing your movement. Do not let a pack pin you down.' },
+  { k: 'frostarcher', n: 'Frost Archer', st: 2, t: 'Shooter', d: 'Ice arrows that chill on hit. Getting slowed by one makes the next easier to land.' },
+  { k: 'yeti', n: 'Yeti', st: 2, t: 'Heavy', d: 'Big, durable and its blows chill you. Fight it in the open.' },
+  { k: 'reaper', n: 'The Reaper', st: 2, t: 'Boss', d: 'Relentless and fast. Long reaping swings with a short warning. It also stalks other floors: when it appears, run for a door.' },
+  { k: 'voidling', n: 'Voidling', st: 3, t: 'Swarmer', d: 'The fastest enemy in the game. Its hits weaken you, so you deal less damage for a while.' },
+  { k: 'voidimp', n: 'Void Imp', st: 3, t: 'Shooter', d: 'Fires void bolts that weaken you on hit.' },
+  { k: 'voidbrute', n: 'Void Brute', st: 3, t: 'Heavy', d: 'The toughest regular enemy. Weakens you on hit and hits very hard.' },
+  { k: 'guardian@3', n: 'The Void Herald', st: 3, t: 'Boss', d: 'Volleys, eruptions, blinks and self-healing, faster and meaner than the Cinder King.' },
+  { k: 'final', n: 'The Lightless One', st: 4, t: 'Final boss', d: 'Shifts between phases: spiral volleys, expanding rings and floor eruptions. Learn each phase before you commit.' },
+  { k: 'hoarder', n: 'Gilded Hoarder', st: -1, t: 'Rare', d: 'Appears by chance and runs from you carrying gold. Catch it before it burrows away.' }
+];
+const enKey = type => type === 'guardian' ? 'guardian@' + stageIdx() : type === 'reaperboss' ? 'reaper' : type;
+// effects glossary
+const CX_FX = [
+  ['Statuses on enemies', [
+    ['Burning', 0xff8a2a, 'Takes fire damage over time.'], ['Chilled', 0x9fe8ff, 'Moves and attacks more slowly.'], ['Frozen', 0xc8f4ff, 'Cannot act. Hits on a stunned or frozen enemy deal 50% more.'],
+    ['Shocked', 0xfff27a, 'Recently hit by lightning. Counts as an element for Prism Shard.'], ['Poisoned', 0x8fe04a, 'Takes damage over time; stacks.'], ['Hexed', 0x9a86ff, 'Takes 15% more damage.'],
+    ['Bleeding', 0xd02a2a, 'Takes damage over time, up to 3 stacks.'], ['Rooted', 0x6fbf4a, 'Cannot move but can still attack. Bosses are rooted for half as long.'],
+    ['Exposed', 0xff9a5a, 'Takes more damage. Only the strongest Exposed applies.'], ['Marked', 0xffd23f, 'Gold reticle. Read by Hunter and Sharpshooter effects; Perfect Execution consumes it.'],
+    ['Judged', 0xf0d27a, 'Paladin: every 3rd attack hit calls a golden pillar.'], ['Commanded', 0xd0303a, 'Warlord: your next hit calls a spectral soldier strike.'],
+    ['Prey', 0xc9a060, 'Your summons hunt it and their hits cleave.'], ['Conductive', 0x9fe8ff, 'A second lightning strike forks to more enemies.'],
+    ['Feared', 0xb0b0c0, 'Runs away from you. Bosses are immune.'], ['Taunted', 0x9fe3ff, 'Walks toward your summon or decoy instead of you. Bosses ignore it.'],
+    ['Stunned', 0xdfe6f0, 'Cannot act. Takes 50% more damage.']]],
+  ['Your mechanics', [
+    ['Frenzy', 0xe07aff, 'Each kill gives bonus damage for 4 seconds, stacking 5 times. Shown under your health.'],
+    ['Shield', 0x9fd0ff, 'Absorbs damage before your health. Some effects store or react to what shields absorb.'],
+    ['Perfect dodge', 0xffffff, 'Dodge just before a hit lands: time slows and stamina returns.'],
+    ['Arcane Echo', 0xb69cff, 'Every 4th Mage bolt is free, wider and harder.'],
+    ['Souls', 0x8fe04a, 'Harvest of Souls and Phylactery: 8 kills earn a Soul (max 3). Poisoned or Hexed kills count double.'],
+    ['Attack Power', 0xffd27a, 'Your class base hit with all your damage bonuses. Most upgrade and relic effects scale with it.'],
+    ['Affinity and evolution', 0xc9a77a, 'Path upgrades and relics push you toward a class. You evolve after the first boss and again after the third.'],
+    ['Ultimate and Resonance', 0xffb347, 'Final classes have an Ultimate. Owning a matching relic upgrades it (Resonance).'],
+    ['Mastery', 0xffd23f, 'One-time upgrade only your final class can take. It changes how the class plays.']]]
+];
+const hex = c => '#' + c.toString(16).padStart(6, '0');
+let cxTab = 'classes', cxSel = null;
+function cxItems() {
+  const g = Object.entries(GEAR).map(([id, x]) => ({ k: 'g_' + id, n: x.name, ic: ICON['g_' + id], d: x.desc, tag: x.tier === 'lunar' ? 'Lunar item' : 'Item', price: x.price }));
+  const e = Object.entries(EQUIP).map(([id, x]) => ({ k: 'e_' + id, n: x.n, ic: ICON['e_' + id], d: x.d + ` Recharges in ${x.cd}s.`, tag: 'Equipment' }));
+  const c = ['heal', 'oil', 'pom', 'boon', 'temper'].filter(id => ITEMS[id]).map(id => ({ k: id, n: ITEMS[id].name(), ic: ICON[id], d: ITEMS[id].desc(), tag: 'Consumable', price: ITEMS[id].price }));
+  return g.concat(e, c);
+}
+function cxCard(o, open) {
+  return `<div class="cxc ${open ? '' : 'locked'}" ${o.col ? `style="--c:${o.col}"` : ''}>${open && o.ic ? `<img src="${o.ic}" alt="">` : `<i class="cxq${open && o.gl ? ' gl' : ''}">${open && o.gl ? o.gl : '?'}</i>`}<div><b>${open ? o.n : '???'}</b>${o.tag ? `<small>${open ? o.tag : ''}</small>` : ''}<span>${open ? o.d : 'Not yet discovered.'}</span>${open && o.extra ? o.extra : ''}</div></div>`;
+}
+function renderCodexTab() {
+  const box = $('talents'), tabs = $('cxTabs');
+  tabs.innerHTML = [['classes', 'Classes'], ['items', 'Items'], ['relics', 'Relics'], ['enemies', 'Enemies'], ['effects', 'Effects']].map(([k, n]) => `<button data-t="${k}" class="${cxTab === k ? 'on' : ''}">${n}</button>`).join('');
+  tabs.querySelectorAll('button').forEach(b => b.onclick = () => { cxTab = b.dataset.t; cxSel = null; renderCodexTab(); });
+  box.className = 'cx-' + cxTab;
+  if (cxTab === 'classes') { renderCamp0(); return; }
+  let h = '', n = 0, tot = 0;
+  if (cxTab === 'items') { const L = cxItems(); tot = L.length; L.forEach(o => { const on = !!CODEX.seen.i[o.k]; n += on; h += cxCard(o, on); }); }
+  if (cxTab === 'relics') {
+    Object.entries(RELICS).forEach(([id, r]) => { tot++; const on = !!CODEX.seen.r[id]; n += on;
+      const ult = Object.entries(ULT).find(([k, u]) => u.res && u.res[id]);
+      const extra = ult ? `<em>Resonance with ${KL[ult[0]].name} (${ult[1].n}): ${ult[1].res[id]}</em>` : '';
+      h += cxCard({ n: r.name, ic: ICON['r_' + id], tag: r.aff ? `${KL[r.aff].name} relic` : 'Relic', d: r.d || fxDesc(r.fx, 1), col: r.aff ? KL[r.aff].color : '#ffd23f', extra }, on); });
+  }
+  if (cxTab === 'enemies') {
+    let st = -2; CX_EN.forEach(o => { tot++; const on = !!CODEX.seen.e[o.k]; n += on;
+      if (o.st !== st) { st = o.st; h += `<h4>${st < 0 ? 'Rare encounters' : STAGE_N[st]}</h4>`; }
+      h += cxCard({ n: o.n, tag: o.t, d: o.d, gl: { Swarmer: '⚔', Shooter: '➶', Heavy: '⛨', Boss: '☠', 'Final boss': '♛', Rare: '✦' }[o.t], col: o.t.includes('oss') ? '#ff6a5a' : '#c4b08a' }, on); });
+  }
+  if (cxTab === 'effects') {
+    CX_FX.forEach(([sec, L]) => { h += `<h4>${sec}</h4>`; L.forEach(([nm, c, d]) => { h += `<div class="cxc fx"><i class="cxdot" style="background:${hex(c)}"></i><div><b>${nm}</b><span>${d}</span></div></div>`; }); });
+  }
+  $('embT').textContent = cxTab === 'effects' ? 'Glossary' : `${n} / ${tot}`;
+  $('embL').textContent = cxTab === 'effects' ? '' : ` ${cxTab} discovered`;
+  box.innerHTML = h;
+}
+// class detail: tap a discovered class
+function classDetail(id) {
+  const k = KL[id], u = ULT[id];
+  const row = (t, n, d) => n ? `<div class="cxd-r"><small>${t}</small><b>${n}</b><span>${d}</span></div>` : '';
+  return `<div class="cxd" style="--c:${k.color}"><img src="${PORTRAIT[id]}" alt=""><div><b class="cxd-n">${k.name}</b><small>${['Base class', 'Specialised class', 'Final class'][k.tier]}${k.parent ? ` · from ${KL[k.parent].name}` : ''}</small>
+    ${k.desc ? `<p>${k.desc}</p>` : ''}${row('Signature', k.sig, k.sigD)}${row('Passive', k.pas, k.pasD)}
+    ${u ? row('Ultimate', u.n, u.d) + Object.entries(u.res || {}).map(([r, d]) => row('Resonance · ' + RELICS[r].name, '', d).replace('<b></b>', '')).join('') : ''}
+    ${k.kids ? `<p class="cxd-k">Evolves into ${k.kids.map(c => KL[c].name).join(' or ')}.</p>` : ''}</div><button class="go alt" id="cxClose">Close</button></div>`;
+}
+function renderCamp0() {
+  renderCampOrig();
+  $('embL').textContent = ' classes discovered';
+  const box = $('talents');
+  box.querySelectorAll('.cx').forEach((el, i) => { const id = el.dataset.id; if (id && CODEX.disc[id]) el.onclick = () => { cxSel = id; showDetail(); }; });
+  if (cxSel) showDetail();
+}
+function showDetail() { let d = $('cxDetail'); d.innerHTML = classDetail(cxSel); d.classList.add('on'); $('cxClose').onclick = () => { cxSel = null; d.classList.remove('on'); }; }
+
+// discovery hooks
+const _rollStock = rollStock; rollStock = function () { const r = _rollStock.apply(this, arguments); try { (Array.isArray(r) ? r : []).forEach(x => { const id = typeof x === 'string' ? x : x && x.id; if (!id) return; if (id.startsWith('r_')) seeCx('r', id.slice(2)); else seeCx('i', id); }); } catch (e) {} return r; };
+const _relicOffer = relicOffer; relicOffer = function () { const ids0 = Object.keys(RELICS); const r = _relicOffer.apply(this, arguments); try { r.forEach(o => { const id = ids0.find(x => RELICS[x].name === o.name); if (id) seeCx('r', id); }); } catch (e) {} return r; };
+const _takeRelic = takeRelic; takeRelic = function (id) { seeCx('r', id); return _takeRelic.apply(this, arguments); };
+const _grantGear = grantGear; grantGear = function (id) { seeCx('i', 'g_' + id); return _grantGear.apply(this, arguments); };
+const _spawnEnemy = spawnEnemy; spawnEnemy = function (type) { try { seeCx('e', enKey(type)); } catch (e) {} return _spawnEnemy.apply(this, arguments); };
+
+// first-room controls hint
+function showControlsHint() {
+  const el = $('ctlHint'); if (!el || CODEX.hintSeen >= 2) return;
+  if (document.querySelector('.screen.on') || choosing || P.dead) { setTimeout(showControlsHint, 1000); return; }
+  const H = { knight: ['Drag left to move · Attack, hold to combo · Roll · Slam', 'WASD move · J attack · Space roll · L slam · Q item'],
+    hunter: ['Drag left to move · Tap Shoot, hold to pierce · Roll · Rain', 'WASD move · J shoot, hold to pierce · Space roll · L rain · Q item'],
+    mage: ['Drag left to move · Hold Bolt to cast · Blink · Nova', 'WASD move · J bolt · Space blink · L nova · Q item'] }[P.cls] || ['', ''];
+  el.textContent = isTouch ? H[0] : H[1]; el.classList.add('on');
+  CODEX.hintSeen = (CODEX.hintSeen || 0) + 1; saveCodex();
+  setTimeout(() => el.classList.remove('on'), 9000);
+}
+
 /* ---------- game state ---------- */
 const TYPES = {
   goblin: { build: buildGoblin, hp: 40, r: .36, speed: 3.3, windup: .42, recover: .55, poise: false, turn: 9 },
@@ -6842,15 +6989,16 @@ function endRun(won) {
   return 0;
 }
 function addEmbers(n, at) { P.embersRun += n; if (at) pop(at, `+${n} embers`, 'gold'); }
-function updateMenuMeta() { const n = Object.keys(CODEX.disc).length; $('menuEmb').textContent = `Class Codex: ${n} of 21 classes discovered.`; }
-function renderCamp() {
+function updateMenuMeta() { const n = Object.keys(CODEX.disc).length; $('menuEmb').textContent = `Codex: ${n} of 21 classes discovered.`; }
+function renderCamp() { renderCodexTab(); }
+function renderCampOrig() {
   const n = Object.keys(CODEX.disc).length;
   $('embT').textContent = `${n} / 21`;
   const box = $('talents'); box.innerHTML = '';
   ['fighter', 'archer', 'mage'].forEach(b0 => {
     const col = document.createElement('div'); col.className = 'cx-tree';
     const card = (id, cls) => { const k = KL[id], d = !!CODEX.disc[id], w = CODEX.wins[id] || 0;
-      return `<div class="cx ${cls} ${d ? 'has-pt' : 'locked'}" style="--c:${k.color}">${d ? `<img class="cx-pt" src="${PORTRAIT[id]}" alt="">` : ''}<b>${d ? k.name : '???'}</b><small>${['Base', 'Specialised', 'Final'][k.tier]}${w ? ` · ${w} win${w > 1 ? 's' : ''}` : ''}</small>${d ? `<span>${k.tier ? `<em>${k.sig}.</em> ${k.sigD}` : k.desc}</span>` : `<span>Evolve from ${KL[k.parent].name} to discover.</span>`}</div>`; };
+      return `<div class="cx ${cls} ${d ? 'has-pt' : 'locked'}" data-id="${id}" style="--c:${k.color}">${d ? `<img class="cx-pt" src="${PORTRAIT[id]}" alt="">` : ''}<b>${d ? k.name : '???'}</b><small>${['Base', 'Specialised', 'Final'][k.tier]}${w ? ` · ${w} win${w > 1 ? 's' : ''}` : ''}</small>${d ? `<span>${k.tier ? `<em>${k.sig}.</em> ${k.sigD}` : k.desc}</span>` : `<span>Evolve from ${KL[k.parent].name} to discover.</span>`}</div>`; };
     let h = card(b0, 't0');
     KL[b0].kids.forEach(t1 => { h += `<div class="cx-branch">${card(t1, 't1')}<div class="cx-leaves">${KL[t1].kids.map(t2 => card(t2, 't2')).join('')}</div></div>`; });
     col.innerHTML = h; box.appendChild(col);
@@ -7027,6 +7175,7 @@ function spawnWave(list) { list.forEach((t, i) => spawnQueue.push({ type: t, at:
 
 function enterRoom(k, fromDir) {
   clearStatusMarkers(); clearHazards(); clearSoldiers(); BUS.emit('roomEnter', { k });
+  if (P && !P.hinted) { P.hinted = 1; setTimeout(showControlsHint, 700); }
   if (cur && cur.reaper) cur.reaper = false; // fleeing sends the Reaper away
   clearWorld();
   cur = rooms[k]; cur.visited = true;

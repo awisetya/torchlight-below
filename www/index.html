@@ -2599,15 +2599,15 @@ const ITEMS = {
 const GEAR = {
   whet:    { name: 'Whetstone', color: 0xdfe6f0, price: 30, desc: '+10% damage per stack.', on: () => { P.dmgMul += .1; } },
   boots:   { name: 'Swift boots', color: 0x8fcf6a, price: 26, desc: '+8% move speed per stack.', on: () => { P.speedMul += .08; } },
-  steak:   { name: 'Iron heart', color: 0xff5a5a, price: 28, desc: '+20 max health per stack.', on: () => { P.max += 20; P.hp += 20; } },
-  lens:    { name: 'Keen lens', color: 0x9fe3ff, price: 30, desc: '+10% critical hit chance per stack. Crits deal double damage.' },
-  charm:   { name: 'Ward charm', color: 0xc4b08a, price: 32, desc: 'Chance to shrug off a hit entirely. 13% with one, a bit more with each stack.' },
-  chime:   { name: 'Storm chime', color: 0xfff27a, price: 34, desc: '20% chance on hit to arc lightning. Each stack adds one more target.' },
+  steak:   { name: 'Iron heart', color: 0xff5a5a, price: 28, desc: '+20 max health per stack. You keep your health percentage.', on: () => setMaxHp(P.max + 20) },
+  lens:    { name: 'Keen lens', color: 0x9fe3ff, price: 30, desc: '+10% critical hit chance per stack. Crit chance caps at 60%; every 10% above the cap becomes +20% crit damage.' },
+  charm:   { name: 'Ward charm', color: 0xc4b08a, price: 32, desc: 'Every 12 seconds a ward forms that blocks the next hit. Each extra stack forms it 1.5s faster, down to 6s.' },
+  chime:   { name: 'Copper Chime', color: 0xfff27a, price: 34, desc: '20% chance on hit to arc lightning. Each stack adds one more target.' },
   pitch:   { name: 'Pitch flask', color: 0xff6a2a, price: 30, desc: 'Kills set nearby enemies on fire for 12 damage per stack.' },
   tooth:   { name: 'Blood tooth', color: 0xd0533f, price: 24, desc: 'Kills heal 2 health per stack.' },
   bomb:    { name: 'Sticky charge', color: 0xffb347, price: 32, desc: '8% chance per stack on hit to stick a bomb that explodes for 30 damage.' },
   brooch:  { name: 'Topaz brooch', color: 0xffd23f, price: 28, desc: 'Kills grant a shield of 5 per stack.' },
-  cell:    { name: 'Fuel cell', color: 0x9a86ff, price: 32, desc: 'Your special recharges faster. 13% with one, more with each stack.' },
+  cell:    { name: 'Fuel cell', color: 0x9a86ff, price: 32, desc: 'Every 5th attack hit cuts 1s from your special cooldown. Each extra stack cuts 0.5s more, up to 3s.' },
   battery: { name: 'Battery', color: 0x6fb0c9, price: 24, desc: '+15% stamina or mana regen per stack.', on: () => { P.regenMul += .15; } },
   glass:   { name: 'Glass shard', tier: 'lunar', color: 0x7fb8ff, price: 40, desc: '+60% damage per stack, but you lose 40% of your max health.', on: () => { P.dmgMul += .6; P.max = Math.max(20, Math.round(P.max * .6)); P.hp = Math.min(P.hp, P.max); } },
   die:     { name: 'Loaded die', tier: 'lunar', color: 0x7fb8ff, price: 36, desc: '+60% gold and experience per stack, but enemies have 25% more health per stack.', on: () => { P.goldMul += .6; P.xpMul += .6; } },
@@ -2622,14 +2622,14 @@ function randGear() {
   const pool = Object.keys(GEAR).filter(id => GEAR[id].tier === (Math.random() < .3 ? 'uncommon' : 'common'));
   return pool[Math.floor(Math.random() * pool.length)];
 }
-const GEAR_OFF = { whet: () => { P.dmgMul -= .1; }, boots: () => { P.speedMul -= .08; }, steak: () => { P.max -= 20; P.hp = Math.min(P.hp, P.max); }, battery: () => { P.regenMul -= .15; } };
+const GEAR_OFF = { whet: () => { P.dmgMul -= .1; }, boots: () => { P.speedMul -= .08; }, steak: () => setMaxHp(P.max - 20), battery: () => { P.regenMul -= .15; } };
 const gc = id => (P && P.gear && P.gear[id]) || 0;
 const hyper = (k, n) => 1 - 1 / (1 + k * n);
 for (const [id, g] of Object.entries(GEAR)) {
   ITEMS['g_' + id] = { price: g.price, color: g.color, gear: true, label: () => g.name + (gc(id) > 1 ? ` x${gc(id)}` : ''), name: () => g.name + (gc(id) ? `, you have ${gc(id)}` : ''), desc: () => `${TIERN[g.tier]}. ${g.desc}`,
     buy: () => { P.gear[id] = gc(id) + 1; if (g.on) g.on(); } };
 }
-const spCdMul = () => Math.pow(.65, gc('clock')) * (hasU('hourglass') ? .6 : 1) * (1 - hyper(.15, gc('cell'))) * (1 - Math.min(.75, L3([0, .15, .25, .35], bl('haste'))));
+const spCdMul = () => Math.pow(.65, gc('clock')) * (hasU('hourglass') ? .6 : 1) * (1 - Math.min(.75, L3([0, .15, .25, .35], bl('haste'))));
 const restockPrice = room => 12 + 8 * (room.rerolls || 0);
 
 const ICON_TEX = {};
@@ -3076,8 +3076,9 @@ function ignite(e, total) {
   if (e.dead) return;
   e.burn = { left: 3, dps: total / 3, tick: .5 };
 }
-function dot(e, d, cls = 'burn') {
+function dot(e, d, cls = 'burn', raw) {
   if (e.dead) return;
+  if (!raw) { d = Math.max(1, Math.round(d * P.dmgMul * lvMul())); e.lastHit = { tag: 'dot', src: cls }; }
   e.hp -= d; e.flash = Math.max(e.flash, .05);
   pop(e.pos, d, cls);
   if (e.hp <= 0) killEnemy(e);
@@ -3104,7 +3105,7 @@ function updateOrbs(dt) {
     for (const e of enemies) {
       if (e.dead || e.state === 'spawn') continue;
       if (Math.hypot(e.pos.x - x, e.pos.z - z) < .45 + e.r && gameTime - (o.hits.get(e) || -9) > .5) {
-        o.hits.set(e, gameTime); SOFT = true; hitEnemy(e, o.dmg, 2, false, new T.Vector3(x, 0, z), false); SOFT = false;
+        o.hits.set(e, gameTime); SOFT = true; withTag('summon', 'orb', () => hitEnemy(e, o.dmg, 2, false, new T.Vector3(x, 0, z), false)); SOFT = false; BUS.emit('summonHit', { e, m: o, dmg: o.dmg });
       }
     }
     if (o.t <= 0 || P.dead) { scene.remove(o.m); orbs.splice(i, 1); }
@@ -3168,6 +3169,7 @@ function onDodgeStart(pos) {
   }
   if (bl('phantom')) P.empower = true;
   sigDodge(true);
+  BUS.emit('dodgeStart', { pos });
 }
 function onDodgeEnd() {
   let l;
@@ -3176,6 +3178,7 @@ function onDodgeEnd() {
   const f = bl('flame');
   if (f) addBlast(P.pos, false, L3([0, 16, 24, 32], f), 1.9);
   sigDodge(false);
+  BUS.emit('dodgeEnd', { pos: P.pos.clone() });
 }
 const dodgeCost = base => base * (1 - Math.min(.9, L3([0, .3, .45, .6], bl('swift')))) * (curseOn('snail') ? 2 : 1);
 function onSkill(pos) {
@@ -3230,6 +3233,7 @@ function updateBlasts(dt) {
     crackFx(b.pos, b.r * .8, b.hostile ? 0xff5a3a : 0xff8a2a); sparkFx(b.pos.clone().setY(.5), 0xffc070, 1.6 * b.r / 1.6);
     ringFx(b.pos, b.hostile ? 0xff3b2f : 0xff8a2a, .3, b.r, .25, .7);
     shake = Math.max(shake, .14);
+    if (!b.hostile) BUS.emit('explosion', { pos: b.pos.clone(), r: b.r, blast: b });
     if (!b.spare) for (const e of enemies) {
       if (e.dead || e.state === 'spawn') continue;
       if (Math.hypot(e.pos.x - b.pos.x, e.pos.z - b.pos.z) < b.r + e.r) { hitEnemy(e, b.dmg, K() === 'saboteur' ? 9 : 4, false, b.pos, false); sigBlastHit(e); }
@@ -3253,7 +3257,8 @@ function lightning(e, n = 1) {
     let dd = dmg;
     if (bl('plasma') && t.burn) dd *= 1.5;
     if (bl('supercond') && t.frozen && t.state === 'stun') { dd *= 3; pop(t.pos, 'Supercharged', 'info'); }
-    hitEnemy(t, dd, 3, true, P.pos, false);
+    withTag('triggered', 'lightning', () => hitEnemy(t, dd, 3, true, P.pos, false));
+    BUS.emit(t === e ? 'lightningHit' : 'lightningJump', { e: t, dmg: dd, from: e }); if (t !== e) BUS.emit('lightningHit', { e: t, dmg: dd, from: e });
     if (t.dead) return;
     if (bl('plasma')) ignite(t, 18);
     if (bl('current')) poisonE(t, 2, 3);
@@ -3470,7 +3475,7 @@ const UPM = Object.fromEntries(UP.map(u => [u.id, u]));
 const UP_MAX = 3;
 // effects that change your numbers directly rather than through an engine hook
 const STATFX = {
-  maxhp: { name: 'Vitality', desc: l => `+${15 * l} max health.`, d: () => { P.max += 15; P.hp += 15; } },
+  maxhp: { name: 'Vitality', desc: l => `+${15 * l} max health.`, d: () => setMaxHp(P.max + 15) },
   might: { name: 'Might', desc: l => `+${8 * l}% damage with everything.`, d: () => { P.dmgMul += .08; } },
   agility: { name: 'Agility', desc: l => `+${6 * l}% move speed.`, d: () => { P.speedMul += .06; } },
   vigor: { name: 'Focus', desc: l => `+${20 * l} max ${resName()}.`, d: () => { P.stMax += 20; P.st += 20; } }
@@ -3565,7 +3570,7 @@ function upOpt(u) {
 }
 const branches = () => (KL[P.klass].kids || []);
 function upgradeOffer() {
-  const can = u => (P.ups[u.id] || 0) < UP_MAX;
+  const can = u => (P.ups[u.id] || 0) < (u.cap ? 1 : UP_MAX);
   const kidsOf = br => UP.filter(u => u.aff === br && can(u));
   const own = UP.filter(u => can(u) && ((u.aff && inLine(u.aff)) || (u.cap && u.cap === P.klass)));
   const neutral = UP.filter(u => !u.aff && !u.cap && can(u));
@@ -3596,7 +3601,7 @@ function relicOffer() {
 }
 function takeRelic(id) {
   const r = RELICS[id]; P.relicIds.push(id); addAff(r.aff, 2);
-  if (r.flag) { P.uniques.push(r.flag); if (r.flag === 'heart') { const a = Math.round(P.max * .5); P.max += a; P.hp += a; } }
+  if (r.flag) { P.uniques.push(r.flag); if (r.flag === 'heart') setMaxHp(P.max + Math.round(P.max * .5)); }
   recalcFx();
   burst(P.pos.clone().setY(1), 0xffd23f, 30, 5, 5); ringFx(P.pos, 0xffd23f, .4, 3.2, .5, .8); pop(P.pos, r.name, 'parry');
 }
@@ -3743,7 +3748,7 @@ function updateMinions(dt) {
     if (tgt && d <= reach + .1 && m.cd <= 0) {
       m.cd = m.beast ? .75 : 1; m.facing = angTo(m.pos, tgt.pos);
       const dmg = (m.kind === 'fox' ? 12 : m.beast ? 9 : 11) * 1.15;
-      SOFT = true; hitEnemy(tgt, dmg, 2, false, m.pos, false); SOFT = false;
+      SOFT = true; withTag('summon', m.kind || 'minion', () => hitEnemy(tgt, dmg, 2, false, m.pos, false)); SOFT = false; BUS.emit('summonHit', { e: tgt, m, dmg });
       if (m.kind === 'wolf' && (K() === 'beastcaller' || bl('regen')) && P.hp < P.max) P.hp = Math.min(P.max, P.hp + 1);
       burst(tgt.pos.clone().setY(.7), m.kind === 'fox' ? 0xffc870 : m.beast ? 0x9ff0e0 : 0x8fe04a, 6, 3, 2);
     }
@@ -3870,7 +3875,7 @@ function perfectDodge() {
   if (P.cls !== 'hunter') return false;
   const win = inLine('hunter') ? .3 : .2;
   if (gameTime - (P.dodgeAt ?? -9) > win || gameTime - (P.perfectAt ?? -9) < 1) return false;
-  P.perfectAt = gameTime; slowT = .7; P.perfectCrit = true; ultGain(.05);
+  P.perfectAt = gameTime; slowT = .7; BUS.emit('perfectDodge', { pos: P.pos.clone() }); P.perfectCrit = true; ultGain(.05);
   P.st = Math.min(P.stMax, P.st + 15);
   if (K() === 'sharpshooter') P.fullDraw = true;
   pop(P.pos, 'Perfect dodge', 'parry'); sfx('blink');
@@ -4501,7 +4506,7 @@ const ULT_CAST = {
   },
   sharpshooter() {
     const ts = ultTargets(14, hasRes('scope') ? 10 : 6); slowT = 1.6; flashScreen('#ffffff', .3, .5);
-    ts.forEach(e => { ringFx(e.pos, 0xff3b2f, 1.2, .5, .5, .9); pop(e.pos, 'Marked', 'info'); });
+    P.deadeyeT = .8 + ts.length * .09 + .6; ts.forEach(e => { ringFx(e.pos, 0xff3b2f, 1.2, .5, .5, .9); MARK.add(e, 5); });
     ts.forEach((e, i) => later(.55 + i * .09, () => { if (e.dead) return; sfx('shoot'); streak(P.pos.clone().setY(1), e.pos.clone().setY(.9), 0xfff2a0); sparkFx(e.pos.clone().setY(.9), 0xfff2a0, 2.2); uHit(e, 360 * 1.8, 8); if (hasRes('hawk')) ultHitting = true; explode(e.pos, 1.4, 140, 0xffd27a); ultHitting = false; }));
   },
   stalker() {
@@ -4595,6 +4600,197 @@ function updateUltUI() {
       if (el === b) { el.style.backgroundImage = bg; el.setAttribute('aria-label', ultOf().n); } else { el.querySelector('i').style.backgroundImage = bg; el.title = ultOf().n; }
     }
   });
+}
+
+/* ---------- build system foundation (Patch A, spec v2.1) ---------- */
+// event bus: records listen to combat events. A listener never hears a hit or kill made by its own record (src),
+// and hit/kill listeners default to attack/special tags so triggered, summon, dot and ult hits cannot loop back.
+const BUS = {
+  h: {},
+  on(ev, fn, o = {}) { (this.h[ev] || (this.h[ev] = [])).push({ fn, o }); },
+  emit(ev, c = {}) {
+    const L = this.h[ev]; if (!L) return;
+    for (const l of L) {
+      const o = l.o;
+      if (o.id && c.src === o.id) continue;
+      const tags = o.tags || ((ev === 'hit' || ev === 'crit') ? ['attack', 'special'] : null);
+      if (tags && c.tag && !tags.includes(c.tag)) continue;
+      if (o.when && !o.when(c)) continue;
+      try { l.fn(c); } catch (err) { console.error('bus', ev, o.id, err); }
+    }
+  }
+};
+// hit context. PX: a raw proc (its damage already includes your multipliers, so hitEnemy skips them). HT: tag only.
+let PX = null, HT = null;
+const hitTag = () => PX ? PX.tag : HT ? HT.tag : (HS === 'attack' || HS === 'special') ? HS : 'other';
+const hitSrc = () => PX ? PX.src : HT ? HT.src : null;
+function procHit(e, dmg, o = {}) {
+  if (!e || e.dead || e.state === 'spawn') return;
+  const prev = PX, hs = HS; PX = { tag: o.tag || 'triggered', src: o.src || null, crit: !!o.crit, depth: prev ? prev.depth + 1 : 0 }; HS = null;
+  try { hitEnemy(e, dmg, o.kb || 0, !!o.heavy, o.from || e.pos, false); } finally { PX = prev; HS = hs; }
+}
+function withTag(tag, src, fn) { const p = HT; HT = { tag, src }; try { return fn(); } finally { HT = p; } }
+// Attack Power (rule B): kit reference hit x the player-side multipliers every proc shares
+const KIT_REF = { knight: 16, hunter: 14, mage: 28 };
+function apMul() {
+  let m = P.dmgMul * lvMul();
+  if (bl('berserk')) m *= 1 + L3([0, .03, .045, .06], bl('berserk')) * Math.floor((1 - P.hp / P.max) * 10);
+  if (bl('last') && P.hp / P.max < .35) m *= 1 + L3([0, .25, .35, .45], bl('last'));
+  if (P.frenzy > 0) m *= 1 + L3([0, .06, .08, .1], bl('frenzy')) * P.frenzy;
+  if (hasU('lantern')) m *= 1.15;
+  if (curseOn('frail')) m *= .6;
+  if (P.weakT > 0) m *= .7;
+  if (P.desp && P.hp / P.max < .35) m *= 1 + P.desp;
+  if (P.hornT > 0) m *= 1.4;
+  return m;
+}
+const AP = () => (KIT_REF[P.cls] || 16) * apMul();
+const rankOf = (arr, lv) => lv > 0 ? arr[Math.min(arr.length, lv) - 1] : 0;
+// caps: keep a list under a maximum, removing the oldest
+function capPush(arr, item, max, drop) { arr.push(item); while (arr.length > max) { const o = arr.shift(); if (drop) drop(o); } return item; }
+// display labels for renamed records: dormant until the record's new effect goes live (Patch B/C)
+const LABEL = { blust: 'Crimson Feast', rage: 'Blood Surge', keen: "Hunter's Mark", exec: 'Final Round', c_sharp: 'Perfect Execution', ambush: 'Veiled Strike',
+  sward: 'Soulguard Orbit', amast: 'Runic Overflow', font: 'Overflowing Mana', tstep: 'Voltage Trail', ghunger: 'Harvest of Souls', pbond: 'Pack Instinct' };
+const LIVE = {};
+const recName = (id, base) => (LIVE[id] && LABEL[id]) || base;
+
+/* ---------- statuses (8 new + Shocked, plus the unified Mark) ---------- */
+const STATUS = {
+  rooted:     { n: 'Rooted', c: 0x6fbf4a, boss: .5 },
+  bleed:      { n: 'Bleeding', c: 0xd02a2a },
+  conductive: { n: 'Conductive', c: 0x9fe8ff },
+  judged:     { n: 'Judged', c: 0xf0d27a },
+  prey:       { n: 'Prey', c: 0xc9a060 },
+  exposed:    { n: 'Exposed', c: 0xff9a5a },
+  fear:       { n: 'Feared', c: 0xb0b0c0, bossImmune: true },
+  commanded:  { n: 'Commanded', c: 0xd0303a },
+  shocked:    { n: 'Shocked', c: 0xfff27a, quiet: true },
+  mark:       { n: 'Marked', c: 0xffd23f }
+};
+const ST_SHOW = ['mark', 'judged', 'commanded', 'prey', 'conductive', 'exposed', 'rooted', 'fear', 'bleed'];
+const hasSt = (e, k) => !!(e && e.st && e.st[k] && e.st[k].t > 0);
+function addStatus(e, k, dur, data) {
+  if (!e || e.dead) return false;
+  const S = STATUS[k];
+  if (e.def.boss) { if (S.bossImmune) return false; if (S.boss) dur *= S.boss; }
+  const st = e.st || (e.st = {}), had = hasSt(e, k);
+  const cur_ = had ? st[k] : {};
+  st[k] = Object.assign(cur_, data || {}, { t: Math.max(dur, had ? cur_.t : 0) });
+  if (!had && !S.quiet) pop(e.pos, S.n, 'info');
+  BUS.emit('statusApplied', { e, k, refresh: had });
+  return true;
+}
+function clearSt(e, k) { if (e && e.st && e.st[k]) { e.st[k].t = 0; if (k === 'mark') MARK.drop(e); } }
+// Exposed: the strongest active value wins, never stacks
+function expose(e, amt, dur) { const a = hasSt(e, 'exposed') ? Math.max(e.st.exposed.amt, amt) : amt; return addStatus(e, 'exposed', dur, { amt: a }); }
+const exposedMul = e => hasSt(e, 'exposed') ? 1 + e.st.exposed.amt : 1;
+// Bleed: up to 3 stacks; a 4th refreshes the oldest. Ticks twice a second as raw DoT (rule A already scaled it).
+function bleed(e, dps, dur = 4) {
+  if (!e || e.dead) return;
+  const had = hasSt(e, 'bleed'), b = had ? e.st.bleed : { stacks: [], tick: .5 };
+  if (b.stacks.length >= 3) b.stacks.sort((x, y) => x.t - y.t).shift();
+  b.stacks.push({ dps, t: dur });
+  addStatus(e, 'bleed', dur, b);
+}
+/* unified Mark: one definition for the Hunter -> Sharpshooter line. 5s, refreshes, no stacks.
+   Max 6 marked enemies, 10 while the Deadeye Ultimate is active; at the cap the oldest Mark drops. */
+const MARK = {
+  list: [],
+  cap: () => (P && P.deadeyeT > 0) ? 10 : 6,
+  add(e, dur = 5) {
+    if (!e || e.dead) return false;
+    this.list = this.list.filter(x => hasSt(x, 'mark') && !x.dead);
+    if (!hasSt(e, 'mark')) { while (this.list.length >= this.cap()) clearSt(this.list.shift(), 'mark'); this.list.push(e); }
+    return addStatus(e, 'mark', dur);
+  },
+  drop(e) { this.list = this.list.filter(x => x !== e); },
+  count() { this.list = this.list.filter(x => hasSt(x, 'mark') && !x.dead); return this.list.length; },
+  consume(e) { clearSt(e, 'mark'); }
+};
+/* shared Soul counter: exists only with Harvest of Souls (ghunger) or Phylactery (phyl). Max 3.
+   +1 per 8 kills, Poisoned or Hexed kills count double. Phylactery reserves 1 while its revive is unused. */
+const ownRelic = id => !!(P && P.relicIds && P.relicIds.includes(id));
+const SOUL = {
+  on: () => !!(P && ((P.ups && P.ups.ghunger && LIVE.ghunger) || (ownRelic('phyl') && LIVE.phyl))),
+  reserve: () => (ownRelic('phyl') && LIVE.phyl && !P.phylUsed) ? 1 : 0,
+  spendable: () => Math.max(0, (P.souls || 0) - SOUL.reserve()),
+  gain(n) { P.soulKills = (P.soulKills || 0) + n; while (P.soulKills >= 8) { P.soulKills -= 8; if ((P.souls || 0) < 3) { P.souls = (P.souls || 0) + 1; pop(P.pos, 'Soul', 'info'); } } },
+  spend(n) { const k = Math.min(n, SOUL.spendable()); P.souls -= k; return k; }
+};
+BUS.on('kill', c => { if (SOUL.on()) SOUL.gain(c.e && (c.e.poison && c.e.poison.stacks > 0 || c.e.curse) ? 2 : 1); }, { id: 'soul' });
+
+// status markers: one small reticle per enemy, coloured by its most important status; particles carry the tint
+const stMarkGeo = new T.RingGeometry(.22, .3, 24);
+function stMarker(e, k) {
+  if (!e.stM) {
+    e.stM = new T.Mesh(stMarkGeo, basic(0xffffff, { transparent: true, opacity: .95, side: T.DoubleSide, depthWrite: false, fog: false }));
+    e.stM.rotation.x = -Math.PI / 2; scene.add(e.stM);
+  }
+  e.stM.visible = !!k && !e.dead;
+  if (k) { e.stM.material.color.setHex(STATUS[k].c); e.stM.position.set(e.pos.x, (e.def.boss ? 3.4 : 2.3) * (e.def.scale || 1), e.pos.z); }
+}
+function updateStatuses(e, dt) {
+  if (!e.st) return;
+  let show = null;
+  for (const k in e.st) {
+    const s = e.st[k]; if (!(s.t > 0)) continue;
+    s.t -= dt;
+    if (k === 'bleed') {
+      s.stacks.forEach(x => x.t -= dt); s.stacks = s.stacks.filter(x => x.t > 0);
+      s.tick -= dt;
+      if (s.tick <= 0 && s.stacks.length) { s.tick += .5; const d = s.stacks.reduce((a, x) => a + x.dps, 0) * .5; e.lastHit = { tag: 'dot', src: 'bleed' }; dot(e, Math.max(1, Math.round(d)), 'hurt', true); if (Math.random() < .5) burst(e.pos.clone().setY(.7), 0xd02a2a, 2, 1.5, 1); }
+      if (!s.stacks.length) s.t = 0;
+    }
+    if (s.t <= 0) { if (k === 'mark') MARK.drop(e); continue; }
+    if (!show || ST_SHOW.indexOf(k) > -1 && ST_SHOW.indexOf(k) < ST_SHOW.indexOf(show)) if (ST_SHOW.includes(k)) show = k;
+    if (Math.random() < .08 && !STATUS[k].quiet) burst(e.pos.clone().setY(.6 + Math.random()), STATUS[k].c, 1, .6, .6);
+  }
+  stMarker(e, show);
+}
+// one enemy step: Rooted holds position (attacks still happen), Fear makes regular enemies flee instead of acting
+function stepEnemy(e, dt, rdt) {
+  if (!e.dead && e.st) updateStatuses(e, rdt);
+  else if (e.dead && e.stM) e.stM.visible = false;
+  if (!e.dead && e.state !== 'spawn' && hasSt(e, 'fear')) {
+    const away = e.pos.clone().sub(P.pos).setY(0); if (away.lengthSq() < .01) away.set(1, 0, 0);
+    away.normalize(); e.pos.addScaledVector(away, (e.def.speed || 2) * .9 * dt);
+    e.pos.x = clamp(e.pos.x, -AX + .5, AX - .5); e.pos.z = clamp(e.pos.z, -AZ + .5, AZ - .5);
+    e.facing = Math.atan2(away.x, away.z); if (e.model && e.model.root) { e.model.root.position.x = e.pos.x; e.model.root.position.z = e.pos.z; e.model.root.rotation.y = e.facing; }
+    if (e.state === 'windup') { e.state = 'recover'; e.t = 0; hideTele(e); }
+    return;
+  }
+  const rooted = !e.dead && hasSt(e, 'rooted'), x0 = e.pos.x, z0 = e.pos.z;
+  updateEnemy(e, dt);
+  if (rooted) { e.pos.x = x0; e.pos.z = z0; e.kb.set(0, 0, 0); if (e.model && e.model.root) { e.model.root.position.x = x0; e.model.root.position.z = z0; } }
+}
+function clearStatusMarkers() { enemies.forEach(e => { if (e.stM) { scene.remove(e.stM); e.stM = null; } }); MARK.list = []; }
+
+/* ---------- items (Patch A3) ---------- */
+// Ward charm: a ward every 12s (1.5s faster per extra stack, min 6s) that negates the next hit
+const wardCd = () => Math.max(6, 12 - 1.5 * (gc('charm') - 1));
+let wardFx = null;
+function updateWard(dt) {
+  if (!P || !gc('charm')) { if (wardFx) wardFx.visible = false; return; }
+  if (!P.ward) { P.wardCd = (P.wardCd ?? wardCd()) - dt; if (P.wardCd <= 0) { P.ward = true; P.wardCd = wardCd(); } }
+  if (!wardFx) { wardFx = halo(0xc4b08a, 2.2, .35); scene.add(wardFx); }
+  wardFx.visible = !!P.ward && !P.dead; if (P.ward) wardFx.position.set(P.pos.x, 1, P.pos.z);
+}
+// Fuel cell: every 5th attack hit cuts 1s from your special cooldown (+0.5s per extra stack, max 3s)
+BUS.on('hit', c => {
+  if (!gc('cell')) return;
+  P.cellN = (P.cellN || 0) + 1;
+  if (P.cellN >= 5) { P.cellN = 0; P.skillCd = Math.max(0, P.skillCd - Math.min(3, 1 + .5 * (gc('cell') - 1))); }
+}, { id: 'cell', tags: ['attack'] });
+// Swift boots and every other speed source: bonus above +60% counts at half value
+const effSpd = () => { const b = P.speedMul - 1; return 1 + (b > .6 ? .6 + (b - .6) / 2 : b); };
+// max health changes keep your current health percentage
+function setMaxHp(m) { const r = P.max > 0 ? P.hp / P.max : 1; P.max = Math.max(1, m); P.hp = Math.min(P.max, Math.max(1, Math.round(r * P.max))); }
+// heal events: effective healing measured once per frame
+let lastHp = null, lastMax = null;
+function watchHeal() {
+  if (!P || P.dead) { lastHp = null; return; }
+  if (lastHp != null && P.max === lastMax && P.hp > lastHp) BUS.emit('heal', { amt: P.hp - lastHp });
+  lastHp = P.hp; lastMax = P.max;
 }
 
 /* ---------- game state ---------- */
@@ -4860,7 +5056,7 @@ function slamAt(c, pw, echo) {
   burst(c.clone().setY(.2), 0x8a7a62, 26, 8, 3); burst(c.clone().setY(.4), eCol(0xffd27a), 14, 6, 4);
   shake = Math.max(shake, .4); hitstop = Math.max(hitstop, .1);
   fxLight.position.set(c.x, 1, c.z); fxFlash = 2.4;
-  if (!echo) onSkill(c);
+  if (!echo) { onSkill(c); BUS.emit('special', { pos: c }); }
   for (const e of enemies) {
     if (e.dead || e.state === 'spawn') continue;
     if (Math.hypot(e.pos.x - c.x, e.pos.z - c.z) < R + e.r) { HS = 'special'; hitEnemy(e, D, 9, true, c); HS = null; if (!e.dead) stunEnemy(e, e.def.boss ? .5 : 1.1, 'Staggered'); }
@@ -4903,7 +5099,7 @@ function updateRains(dt) {
         const m = new T.Mesh(quickArrowGeo, basic(eCol(0xf3e8cc), { fog: false })); m.rotation.x = Math.PI / 2;
         m.position.set(r.c.x + Math.cos(a) * d, 3.6 + Math.random(), r.c.z + Math.sin(a) * d); scene.add(m); r.falls.push(m);
       }
-      if (r.ticks === 1 && !r.echo) { onSkill(r.c); sigRain(r); }
+      if (r.ticks === 1 && !r.echo) { onSkill(r.c); sigRain(r); BUS.emit('special', { pos: r.c }); }
       for (const e of enemies) {
         if (e.dead || e.state === 'spawn') continue;
         if (Math.hypot(e.pos.x - r.c.x, e.pos.z - r.c.z) < r.R + e.r) {
@@ -4932,7 +5128,7 @@ function updateTraps(dt) {
         hitEnemy(e, 18, 0, false, tr.pos);
         if (!e.dead) stunEnemy(e, 2.4, 'Snared');
         burst(tr.pos.clone().setY(.3), 0xc9ced6, 12, 4, 3); shake = Math.max(shake, .12);
-        onSkill(tr.pos);
+        onSkill(tr.pos); BUS.emit('trapSpring', { pos: tr.pos.clone(), e, trap: tr });
         if (K() === 'saboteur') addBlast(tr.pos, false, 58, 2.1);
         sprung = true; break;
       }
@@ -5011,7 +5207,7 @@ function novaAt(pw, echo) {
   ringFx(P.pos, eCol(0xffffff), .3, R * .8, .25, .5);
   burst(P.pos.clone().setY(.5), eCol(0xd9ccff), 22, 8, 2);
   hitstop = Math.max(hitstop, .06); shake = Math.max(shake, .2);
-  if (!echo) { onSkill(P.pos); sigNova(pw, echo); }
+  if (!echo) { onSkill(P.pos); sigNova(pw, echo); BUS.emit('special', { pos: P.pos.clone() }); }
   for (const e of enemies) {
     if (e.dead || e.state === 'spawn') continue;
     if (e.pos.distanceTo(P.pos) < R + e.r) {
@@ -5028,17 +5224,18 @@ function flagStamina() { const b = $('stBar'); b.classList.remove('low'); void b
 
 function hitEnemy(e, dmg, kb, heavy, from, proc = true) {
   if (e.inv) { if (Math.random() < .2) pop(e.pos, 'Immune', 'info'); return; }
+  const raw = !!PX, hp0 = e.hp / e.max;
   const stunned = e.state === 'stun';
-  let mul = P.dmgMul * (stunned ? 1.5 : 1);
+  let mul = (raw ? 1 : P.dmgMul) * (stunned ? 1.5 : 1) * exposedMul(e);
   const atk = proc && HS === 'attack', sp = proc && HS === 'special';
   if (e.curse) mul *= 1 + e.curse.amt;
+  if (!raw) {
   if (atk && bl('momentum')) mul *= 1 + P.mom * L3([0, .03, .045, .06], bl('momentum'));
   if (bl('berserk')) mul *= 1 + L3([0, .03, .045, .06], bl('berserk')) * Math.floor((1 - P.hp / P.max) * 10);
   if (atk && bl('execute') && e.hp / e.max < .3) mul *= 1 + L3([0, .6, .9, 1.2], bl('execute'));
   if (bl('last') && P.hp / P.max < .35) mul *= 1 + L3([0, .25, .35, .45], bl('last'));
   if (P.frenzy > 0) mul *= 1 + L3([0, .06, .08, .1], bl('frenzy')) * P.frenzy;
   if (atk && P.empower) { mul *= 1 + L3([0, .6, .9, 1.2], bl('phantom')); P.empower = false; }
-  if (floorMod === 'brittle') mul *= 1.3;
   if (hasU('lantern')) mul *= 1.15;
   if (curseOn('frail')) mul *= .6;
   if (P.weakT > 0) mul *= .7;
@@ -5046,9 +5243,12 @@ function hitEnemy(e, dmg, kb, heavy, from, proc = true) {
   if (P.hornT > 0) mul *= 1.4;
   mul *= sigDmgMul(e, atk, heavy);
   mul *= lvMul();
+  }
+  if (floorMod === 'brittle') mul *= 1.3;
   const critC = (atk ? L3([0, .15, .22, .3], bl('crit')) : 0) + (proc ? .1 * gc('lens') + (P.chaosCrit || 0) : 0);
-  const crit = !!sigCritBonus(e, atk, heavy) || Math.random() < Math.min(.6, critC);
-  if (crit) mul *= 2 + L3([0, .5, .75, 1], bl('precision'));
+  const preMul = mul;
+  const crit = raw ? PX.crit : (!!sigCritBonus(e, atk, heavy) || Math.random() < Math.min(.6, critC));
+  if (crit) mul *= 2 + L3([0, .5, .75, 1], bl('precision')) + 2 * Math.max(0, critC - .6);
   const d = Math.round(dmg * mul * rand(.9, 1.1));
   let hd = d;
   if (e.armor > 0) {
@@ -5092,6 +5292,8 @@ function hitEnemy(e, dmg, kb, heavy, from, proc = true) {
     if (gc('chime') && Math.random() < .2) lightning(e, gc('chime'));
     if (gc('bomb') && !e.bomb && Math.random() < .08 * gc('bomb')) { e.bomb = 1; pop(e.pos, 'Bomb', 'info'); }
   }
+  e.lastHit = { tag: PX ? PX.tag : HT ? HT.tag : atk ? 'attack' : sp ? 'special' : 'other', src: PX ? PX.src : HT ? HT.src : null, pre: dmg * preMul, hp0, crit, depth: PX ? PX.depth : 0 };
+  { const c_ = Object.assign({ e, dmg: dmg * preMul, final: d, heavy }, e.lastHit); BUS.emit('hit', c_); if (crit) BUS.emit('crit', c_); }
   if (e.hp <= 0 && !e.dead) killEnemy(e);
 }
 function killEnemy(e) {
@@ -5101,6 +5303,7 @@ function killEnemy(e) {
   ultOnKill(e);
   dropLoot(e);
   sigOnKill(e);
+  BUS.emit('kill', Object.assign({ e }, e.lastHit || { tag: 'other' }));
   if (e.type === 'boss') achieve('warden'); if (e.def.ai === 'reaper') achieve('reaper'); if (e.type === 'final') achieve('final');
   gainXp(Math.round((e.def.xp || XP[e.type] || 4) * (1 + (floor - 1) * .15) * (hasU('idol') ? 2 : 1) * (1 + L3([0, .2, .3, .4], bl('greed')))));
   if (e.killedBy === 'attack' && bl('splinter')) {
@@ -5151,7 +5354,7 @@ function hideTele(e) {
 function hurtPlayer(dmg, srcPos, srcEnemy, heavy) {
   if (P.dead) return 'none';
   if (P.iframes <= 0 && P.hurtCd <= 0 && bl('evasion') && Math.random() < Math.min(.6, L3([0, .08, .12, .16], bl('evasion')))) { pop(P.pos, 'Evaded', 'info'); P.hurtCd = .3; return 'none'; }
-  if (P.iframes <= 0 && P.hurtCd <= 0 && gc('charm') && Math.random() < hyper(.15, gc('charm'))) { pop(P.pos, 'Warded', 'info'); P.hurtCd = .3; return 'none'; }
+  if (P.iframes <= 0 && P.hurtCd <= 0 && gc('charm') && P.ward) { P.ward = false; P.wardCd = wardCd(); pop(P.pos, 'Warded', 'info'); ringFx(P.pos, 0xc4b08a, .6, 1.6, .3, .8); P.hurtCd = .3; return 'none'; }
   dmg = Math.round(dmg * eLevelDmg() * srcTakeMul(srcEnemy) * (srcEnemy && srcEnemy.elite ? 1.35 : 1) * (srcEnemy && srcEnemy.weakT > 0 ? 1 - srcEnemy.weakAmt : 1) * (curseOn('pain') ? 1.6 : 1));
   if (P.iframes > 0) {
     if (perfectDodge()) return 'dodge';
@@ -5191,10 +5394,11 @@ function hurtPlayer(dmg, srcPos, srcEnemy, heavy) {
 }
 function damagePlayer(d, chip) {
   d = Math.max(1, Math.round(d * sigTakeMul() * (1 - Math.min(.6, L3([0, .1, .15, .2], bl('stone')))) * (1 - (P.armor || 0)) * (floorMod === 'brittle' ? 1.3 : 1)));
-  if (P.shield > 0) { const a = Math.min(P.shield, d); P.shield -= a; d -= a; if (d <= 0) { pop(P.pos, 'Absorbed', 'info'); P.hurtCd = chip ? .1 : .35; return; } }
+  if (P.shield > 0) { const a = Math.min(P.shield, d); P.shield -= a; d -= a; BUS.emit('shieldAbsorb', { amt: a }); if (P.shield <= 0) BUS.emit('shieldBreak', {}); if (d <= 0) { pop(P.pos, 'Absorbed', 'info'); P.hurtCd = chip ? .1 : .35; return; } }
   d = manaShield(d);
   if (d <= 0) { pop(P.pos, 'Absorbed', 'info'); P.hurtCd = chip ? .1 : .35; return; }
-  P.hp -= d; P.flash = .15; P.hurtCd = chip ? .1 : .35; ultGain(d / P.max * .5);
+  P.hp -= d; P.flash = .15; P.hurtCd = chip ? .1 : .35; ultGain(d / P.max * .5); BUS.emit('damageTaken', { amt: d });
+  if (P.hp <= 0) BUS.emit('lethalDamage', {});
   if (!chip) sfx('hurt');
   pop(P.pos, d, 'hurt');
   if (!chip) $('hurt').style.opacity = .7;
@@ -5493,7 +5697,7 @@ function updatePlayer(dt) {
   const mv = moveVec();
   const blockHeld = input.blockKey || input.blockTouch || input.blockMouse;
   const mobility = () => (P.cls === 'mage' ? blink(mv) : startRoll(mv));
-  const walk = mult => { P.vel.copy(mv).multiplyScalar(C.speed * P.speedMul * (curseOn('snail') ? .65 : 1) * (P.hornT > 0 ? 1.4 : 1) * (P.chillT > 0 ? .6 : 1) * mult); P.pos.addScaledVector(P.vel, dt); };
+  const walk = mult => { P.vel.copy(mv).multiplyScalar(C.speed * effSpd() * (curseOn('snail') ? .65 : 1) * (P.hornT > 0 ? 1.4 : 1) * (P.chillT > 0 ? .6 : 1) * mult); P.pos.addScaledVector(P.vel, dt); };
 
   if (P.stDelay > 0) P.stDelay -= dt;
   else if (!P.blocking) P.st = Math.min(P.stMax, P.st + C.regen * P.regenMul * dt);
@@ -6051,7 +6255,7 @@ function renderSheet() {
       ['Damage reduction', Math.min(.6, L3([0, .1, .15, .2], upL('stone'))), Math.min(.6, L3([0, .1, .15, .2], bl('stone'))), pc, pcs, 'Max 60%', lvs('stone')],
       ['Evasion', ev0, ev1, pc, pcs, '', src(lvs('evasion'), gs('charm', 'Ward charm'))]]],
     ['Utility', [
-      ['Move speed', 1 + .06 * upL('agility'), P.speedMul, pc, pcs, '', gs('boots', 'Swift boots')],
+      ['Move speed', 1 + .06 * upL('agility'), effSpd(), pc, pcs, '', gs('boots', 'Swift boots')],
       [`Max ${res}`, 100 + 20 * upL('vigor'), P.stMax, v => String(Math.round(v)), num, '', gs('clock', 'Stopped clock')],
       [`${Res} regen`, C.regen, C.regen * P.regenMul, v => Math.round(v) + '/s', num, '', gs('battery', 'Battery')],
       [P.cls === 'mage' ? 'Blink cost' : 'Roll cost', mc0, mc1, v => String(Math.round(v)), num, 'Lower is better', src(lvs('swift'), K() === 'stormcaller' && 'Stormcaller')],
@@ -6141,6 +6345,7 @@ function banner(text, sub = '') { $('bannerT').textContent = text; $('bannerS').
 function spawnWave(list) { list.forEach((t, i) => spawnQueue.push({ type: t, at: gameTime + .7 + i * .35 })); }
 
 function enterRoom(k, fromDir) {
+  clearStatusMarkers(); BUS.emit('roomEnter', { k });
   if (cur && cur.reaper) cur.reaper = false; // fleeing sends the Reaper away
   clearWorld();
   cur = rooms[k]; cur.visited = true;
@@ -6458,13 +6663,13 @@ function loop() {
   if (dt > 0) {
     gameTime += dt;
     updatePlayer(dt);
-    for (const e of enemies) updateEnemy(e, dt * (e.chillT > 0 ? 1 - (e.chillAmt || 0) : 1));
+    for (const e of enemies) stepEnemy(e, dt * (e.chillT > 0 ? 1 - (e.chillAmt || 0) : 1), dt);
     updateArrows(dt);
     separate();
     updateRoom(dt);
     updateLoot(dt);
     updateBlasts(dt);
-    updateOrbs(dt);
+    updateOrbs(dt); updateWard(dt); watchHeal(); if (P.deadeyeT > 0) P.deadeyeT -= dt;
     updateMinions(dt); updateGroves(dt); if (P.rageT > 0) P.rageT -= dt;
     updateTimers(dt);
     updateTraps(dt);

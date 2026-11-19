@@ -4831,7 +4831,7 @@ function addHazard(h) {
   if (h.max && same.length >= h.max) killHazard(same[0]);
   h.tick = h.tick ?? 0; hazards.push(h); return h;
 }
-function killHazard(h) { if (h.mesh) scene.remove(h.mesh); if (h.end) h.end(h); hazards = hazards.filter(x => x !== h); }
+function killHazard(h, silent) { if (h.mesh) scene.remove(h.mesh); if (h.end && !silent) h.end(h); hazards = hazards.filter(x => x !== h); }
 function updateHazards(dt) {
   for (const h of hazards.slice()) {
     h.t -= dt; h.tick -= dt;
@@ -4841,7 +4841,7 @@ function updateHazards(dt) {
     if (h.t <= 0) killHazard(h);
   }
 }
-function clearHazards() { hazards.slice().forEach(killHazard); hazards = []; }
+function clearHazards() { hazards.slice().forEach(h => killHazard(h, true)); hazards = []; }
 function decal(pos, r, col, op = .35) { const m = flat(new T.CircleGeometry(r, 32), decalMat(col, op)); m.position.set(pos.x, .04, pos.z); scene.add(m); return m; }
 // per-frame hooks for records that watch the world
 const REC_TICK = [];
@@ -5404,7 +5404,7 @@ function blink(mv) {
   sfx('blink');
   onDodgeStart(P.pos.clone());
   const bp = P.pos.clone();
-  P.pos.addScaledVector(dir, 4.2); confine(P);
+  P.pos.addScaledVector(dir, 4.2); P.pos.x = clamp(P.pos.x, -AX + P.r, AX - P.r); P.pos.z = clamp(P.pos.z, -AZ + P.r, AZ - P.r); confine(P);
   dashHits(bp, P.pos);
   P.facing = Math.atan2(dir.x, dir.z);
   P.iframes = .25 + (K() === 'stormcaller' ? .2 : 0); P.st = Math.max(0, P.st - cost); P.stDelay = .4; P.state = 'idle';
@@ -6871,6 +6871,13 @@ function updateHUD() {
 
 /* ---------- main loop ---------- */
 const clock = new T.Clock();
+const ERRSEEN = new Set(); window.__errs = [];
+function reportErr(err) {
+  const m = (err && err.message) || String(err); window.__errs.push(m); if (ERRSEEN.has(m)) return; ERRSEEN.add(m); console.error(err);
+  try { const el = document.createElement('div'); el.className = 'toast'; const at = ((err && err.stack) || '').split('\n')[1] || '';
+    el.innerHTML = `<small>Something broke. The game kept running.</small><b>${m.slice(0, 90)}</b><span>${at.trim().slice(0, 90)}</span>`;
+    $('toasts').appendChild(el); setTimeout(() => el.remove(), 9000); } catch (_) {}
+}
 function loop() {
   requestAnimationFrame(loop);
   const real = Math.min(clock.getDelta(), .05);
@@ -6884,25 +6891,25 @@ function loop() {
 
   if (dt > 0) {
     gameTime += dt;
-    updatePlayer(dt);
-    for (const e of enemies) stepEnemy(e, dt * (e.chillT > 0 ? 1 - (e.chillAmt || 0) : 1), dt);
-    updateArrows(dt);
-    separate();
-    updateRoom(dt);
-    updateLoot(dt);
-    updateBlasts(dt);
-    updateOrbs(dt); updateRecs(dt); updateWard(dt); watchHeal(); if (P.deadeyeT > 0) P.deadeyeT -= dt;
-    updateMinions(dt); updateGroves(dt); if (P.rageT > 0) P.rageT -= dt;
-    updateTimers(dt);
-    updateTraps(dt);
-    updateParts(dt);
-    updateRings(dt);
+    try { updatePlayer(dt); } catch (err) { reportErr(err); }
+    for (const e of enemies) { try { stepEnemy(e, dt * (e.chillT > 0 ? 1 - (e.chillAmt || 0) : 1), dt); } catch (err) { reportErr(err); } }
+    try { updateArrows(dt); } catch (err) { reportErr(err); }
+    try { separate(); } catch (err) { reportErr(err); }
+    try { updateRoom(dt); } catch (err) { reportErr(err); }
+    try { updateLoot(dt); } catch (err) { reportErr(err); }
+    try { updateBlasts(dt); } catch (err) { reportErr(err); }
+    try { updateOrbs(dt); updateRecs(dt); updateWard(dt); watchHeal(); if (P.deadeyeT > 0) P.deadeyeT -= dt; } catch (err) { reportErr(err); }
+    try { updateMinions(dt); updateGroves(dt); if (P.rageT > 0) P.rageT -= dt; } catch (err) { reportErr(err); }
+    try { updateTimers(dt); } catch (err) { reportErr(err); }
+    try { updateTraps(dt); } catch (err) { reportErr(err); }
+    try { updateParts(dt); } catch (err) { reportErr(err); }
+    try { updateRings(dt); } catch (err) { reportErr(err); }
   }
-  animateHero(real * (dt > 0 || !playing ? 1 : 0), time);
-  for (const e of enemies) animateEnemy(e, dt, time);
-  updateFloats(real); updateSparks(real); updateDecals(real); updateDecor(time); animStairs(time); descendPrompt();
-  updateMotes(real, time);
-  audioTick(real);
+  try { animateHero(real * (dt > 0 || !playing ? 1 : 0), time); } catch (err) { reportErr(err); }
+  for (const e of enemies) { try { animateEnemy(e, dt, time); } catch (err) { reportErr(err); } }
+  try { updateFloats(real); updateSparks(real); updateDecals(real); updateDecor(time); animStairs(time); descendPrompt(); } catch (err) { reportErr(err); }
+  try { updateMotes(real, time); } catch (err) { reportErr(err); }
+  try { audioTick(real); } catch (err) { reportErr(err); }
 
   if (playing && P.dead && deadT > 1.3 && !overShown) showOver();
 

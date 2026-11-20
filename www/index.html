@@ -445,7 +445,7 @@ body:not(.is-touch) #buyBtn:disabled::after{display:none}
 
 <div class="screen" id="win">
   <div class="card">
-    <h2>The dark is broken</h2>
+    <h2 id="winT">The darkness has been lifted</h2>
     <p id="winS"></p>
     <p class="embl" id="winE"></p>
     <p class="sub">Your class is recorded in the Codex. Try another path next time.</p>
@@ -840,6 +840,9 @@ function buildRoom(room) {
   if (roomGroup) scene.remove(roomGroup);
   roomGroup = new T.Group(); scene.add(roomGroup);
   [AX, AZ] = room.size;
+  restoreTorches();
+  if (room.type === 'umbra') return buildUmbraRoom(room);
+  UMB = null;
   const has = d => room.doors.includes(d);
   const gap = (d, v) => has(d) && (v === -1 || v === 0);
 
@@ -1076,10 +1079,12 @@ function updateInteract() {
   if (!roomLocked && !P.dead && !choosing) {
     if (cur.altar && !cur.altarDone && Math.hypot(P.pos.x - cur.altarPos[0], P.pos.z - cur.altarPos[1]) < 1.5) best = 'altar';
     if (cur.type === 'chaos' && !cur.used && Math.hypot(P.pos.x, P.pos.z - (-AZ + 1.2)) < 2.1) best = 'chaos';
+    if (cur.cgate && !cur.cgateUsed && relicT <= 0 && !choiceQ.length && Math.hypot(P.pos.x, P.pos.z - (-AZ + 1.4)) < 2.2) best = 'cgate';
   }
   intTarget = best;
   $('shop').classList.toggle('on', !!best);
   if (!best) return;
+  if (best === 'cgate') { $('shopIc').hidden = true; $('shopName').textContent = 'The Chaos Gate'; $('shopDesc').textContent = 'Something older than the dark waits beyond. There is no way back.'; $('buyBtn').disabled = false; $('buyBtn').textContent = 'Enter'; return; }
   if (best === 'altar') {
     const a = altarInfo(cur);
     $('shopIc').hidden = true; $('shopName').textContent = a.name; $('shopDesc').textContent = a.desc;
@@ -1092,6 +1097,7 @@ function updateInteract() {
 }
 function useInteract() {
   if (!intTarget || !playing || paused || P.dead) return;
+  if (intTarget === 'cgate') { cur.cgateUsed = true; intTarget = null; $('shop').classList.remove('on'); startTransition('umbra'); return; }
   if (intTarget === 'altar') useAltar(cur);
   else {
     const cost = Math.max(1, Math.round(P.max * .25)); if (P.hp <= cost) return;
@@ -4041,7 +4047,7 @@ function stageClear(boss) {
   c.classList.add('clear');
   c.querySelector('img').src = `art/stage/${n}.webp`;
   c.querySelector('small').textContent = `${bossName(boss)} falls`;
-  c.querySelector('b').textContent = fin ? 'The dark is lifted' : 'Stage cleared';
+  c.querySelector('b').textContent = fin ? 'The darkness has been lifted' : 'Stage cleared';
   c.querySelector('span').textContent = `Time ${fmtT(gameTime - stageT0)} · ${kills - stageK0} kills · ${Math.ceil(P.hp)} / ${P.max} health`;
   c.classList.add('on'); clearTimeout(stageCardTimer);
   stageCardTimer = setTimeout(() => { c.classList.remove('on'); setTimeout(() => c.classList.remove('clear'), 500); }, 3200);
@@ -4087,8 +4093,8 @@ function animStairs(time) {
 }
 function descendPrompt() {
   const el = $('descend'); if (!el) return;
-  const on = !!(playing && cur && cur.stairsOpen && !trans && !P.dead && !choosing && relicT <= 0 && !choiceQ.length && runStage < 5 && Math.hypot(P.pos.x, P.pos.z) < 3.6);
-  if (on) { const nx = STAGES[runStage % STAGES.length]; const t = `Step into the light to descend · Stage ${runStage + 1}: ${nx.name}`; if (el.textContent !== t) el.textContent = t; }
+  const on = !!(playing && cur && cur.stairsOpen && !trans && !P.dead && !choosing && relicT <= 0 && !choiceQ.length && (runStage < 5 || cur.boss === 'final') && Math.hypot(P.pos.x, P.pos.z) < 3.6);
+  if (on) { const nx = STAGES[runStage % STAGES.length]; const t = cur.boss === 'final' ? 'Step into the light to end your run · or enter the Chaos Gate behind you' : `Step into the light to descend · Stage ${runStage + 1}: ${nx.name}`; if (el.textContent !== t) el.textContent = t; }
   el.classList.toggle('on', on);
 }
 
@@ -4775,7 +4781,7 @@ function addStatus(e, k, dur, data, quiet) {
 function clearSt(e, k) { if (e && e.st && e.st[k]) { e.st[k].t = 0; if (k === 'mark') MARK.drop(e); } }
 // Exposed: the strongest active value wins, never stacks
 function expose(e, amt, dur) { const a = hasSt(e, 'exposed') ? Math.max(e.st.exposed.amt, amt) : amt; return addStatus(e, 'exposed', dur, { amt: a }); }
-const exposedMul = e => hasSt(e, 'exposed') ? 1 + e.st.exposed.amt : 1;
+const exposedMul = e => (hasSt(e, 'exposed') ? 1 + e.st.exposed.amt : 1) * (e.umb ? umbTakeMul() : 1);
 // Bleed: up to 3 stacks; a 4th refreshes the oldest. Ticks twice a second as raw DoT (rule A already scaled it).
 function bleed(e, dps, dur = 4) {
   if (!e || e.dead) return;
@@ -5689,6 +5695,346 @@ function showControlsHint() {
   setTimeout(() => el.classList.remove('on'), 9000);
 }
 
+/* ---------- Umbra, the Last Dark: optional true final boss beyond the Chaos Gate ---------- */
+const UR = 7.5;                                                // arena radius
+const UDIR = new T.Vector3(-1, 0, -1).normalize();           // Umbra rises at the far rim, away from the camera
+const UFWD = UDIR.clone().negate(), ULAT = new T.Vector3(1, 0, -1).normalize();
+const UMB_ADDS = { p2: ['voidling'], p3: ['goblin', 'skitter', 'icegob', 'voidling', 'archer', 'imp', 'frostarcher', 'voidimp', 'orc', 'brute', 'yeti', 'voidbrute'] };
+let UMB = null;
+const tmpCam = new T.Vector3();
+const UV2 = new T.Vector3();
+ACH.umbra = { n: 'The Light Holds', d: 'Defeat Umbra, the Last Dark.' };
+STAGE_N.push('Beyond the Chaos Gate');
+{ const i = CX_EN.findIndex(o => o.k === 'final'); if (i >= 0) CX_EN[i].t = 'Boss';
+  CX_EN.splice(CX_EN.findIndex(o => o.st < 0), 0, { k: 'umbra', n: 'Umbra, the Last Dark', st: 5, t: 'Final boss', d: 'Waits beyond the Chaos Gate, too vast to fit the arena. Its hands slam and sweep; strike them while they are stuck in the floor. It swallows the light: rekindle the braziers to weaken it. At the end its head crashes down and the core is exposed.' }); }
+
+function restoreTorches() { torches.forEach(t => { t.g.visible = true; t.g.children.forEach(c => { if (!c.isLight) c.visible = true; }); }); }
+const umbCamV = new T.Vector3();
+function umbCam() { const k = UMB.t < 3.6 ? 1 : UMB.t < 5 ? 1 - (UMB.t - 3.6) / 1.4 : 0; umbCamV.copy(P.pos).multiplyScalar(.5).addScaledVector(UDIR, 3).setY(2.2); return umbCamV.lerp(tmpV.copy(UDIR).multiplyScalar(5).setY(3.4), easeOut(k)); }
+const umbTakeMul = () => (UMB && UMB.phase >= 2 ? .55 + .13 * UMB.lit() : 1);
+
+// a bendy chain of cylinders between two points (arms, neck)
+function umbChain(n, r0, r1, mat, parent) {
+  const geo = new T.CylinderGeometry(1, 1, 1, 7, 1), segs = [];
+  for (let i = 0; i < n; i++) { const m = new T.Mesh(geo, mat); m.castShadow = true; parent.add(m); segs.push(m); }
+  const a = new T.Vector3(), b = new T.Vector3(), up = new T.Vector3(0, 1, 0), d = new T.Vector3(), c = new T.Vector3();
+  const pt = (p0, p1, p2, t, out) => out.set(0, 0, 0).addScaledVector(p0, (1 - t) * (1 - t)).addScaledVector(p1, 2 * t * (1 - t)).addScaledVector(p2, t * t);
+  return { segs, update(p0, p2, lift) {
+    c.copy(p0).add(p2).multiplyScalar(.5); c.y += lift;
+    for (let i = 0; i < n; i++) {
+      pt(p0, c, p2, i / n, a); pt(p0, c, p2, (i + 1) / n, b); d.subVectors(b, a); const L = d.length();
+      const s = segs[i], r = lerp(r0, r1, (i + .5) / n);
+      s.position.copy(a).add(b).multiplyScalar(.5); s.quaternion.setFromUnitVectors(up, d.normalize()); s.scale.set(r, L * 1.12, r);
+    }
+  } };
+}
+
+function buildUmbraModel(g) {
+  const body = new T.MeshStandardMaterial({ color: 0x050407, emissive: 0x040108, roughness: .9, flatShading: true, fog: false });
+  const B = UDIR.clone().multiplyScalar(UR + 1.7);
+  const torso = new T.Group(); torso.position.copy(B); torso.rotation.y = Math.atan2(UFWD.x, UFWD.z); torso.scale.setScalar(.8); g.add(torso);
+  const back = halo(0x7a1430, 22, .32); back.position.set(0, 4.5, -3); torso.add(back);
+  const prof = [[0, 6.2], [.9, 6], [1.9, 5.5], [2.7, 4.8], [3.2, 3.6], [3.3, 2], [3.1, 0], [3.4, -2], [4, -4]].reverse().map(p => new T.Vector2(p[0], p[1]));
+  const tm = new T.Mesh(new T.LatheGeometry(prof, 18), body); tm.scale.z = .72; torso.add(tm);
+  const shoulders = [-1, 1].map(s => { const m = new T.Mesh(new T.SphereGeometry(1.55, 12, 9), body); m.position.set(s * 2.9, 4.5, .3); m.scale.set(1, .85, 1); torso.add(m); return m; });
+  // chest crack with the core light
+  const crackM = basic(0xff3b6a, { fog: false });
+  const core = new T.Mesh(new T.OctahedronGeometry(.42, 0), crackM); core.position.set(0, 3.3, 2.25); core.scale.y = 1.6; torso.add(core); core.add(halo(0xff3b6a, 3.2, .7));
+  for (let i = 0; i < 5; i++) { const c = new T.Mesh(new T.BoxGeometry(.06, rand(.6, 1.3), .06), crackM); c.position.set(rand(-.6, .6), 3.3 + rand(-.8, .8), 2.25); c.rotation.z = rand(-1, 1); torso.add(c); }
+  // head
+  const head = new T.Group(); head.position.set(0, 6.3, 1.1); torso.add(head);
+  const skull = new T.Mesh(new T.SphereGeometry(1.15, 14, 10), body); skull.scale.set(1.05, .95, 1.15); head.add(skull);
+  const jaw = new T.Mesh(new T.BoxGeometry(1.3, .45, 1.1), body); jaw.position.set(0, -.75, .45); jaw.rotation.x = .25; head.add(jaw);
+  const hornM = new T.MeshStandardMaterial({ color: 0x0a080c, emissive: 0x050208, roughness: .6, flatShading: true, fog: false });
+  [-1, 1].forEach(s => { let p = new T.Group(); p.position.set(s * .75, .6, -.1); p.rotation.set(-.5, 0, -s * .7); head.add(p);
+    [[.32, 1.1], [.22, 1], [.12, .9]].forEach(([r, h], i) => { const c = new T.Mesh(new T.ConeGeometry(r, h, 7), hornM); c.position.y = h / 2; p.add(c); const q = new T.Group(); q.position.y = h * .9; q.rotation.set(-.35, 0, -s * .25); p.add(q); p = q; }); });
+  const eyeM = basic(0xff4a7a, { fog: false }), eyes = [-1, 1].map(s => { const e = new T.Mesh(new T.SphereGeometry(.17, 10, 8), eyeM); e.position.set(s * .43, .05, 1.08); e.scale.set(1.4, .7, .6); head.add(e); e.add(halo(0xff3b6a, 1.4, .8)); return e; });
+  const mouth = new T.Mesh(new T.BoxGeometry(.9, .05, .05), crackM); mouth.position.set(0, -.55, 1.1); head.add(mouth);
+  // base tendrils into the abyss
+  for (let i = 0; i < 9; i++) { const a = (i / 9 - .5) * 2.6, c = new T.Mesh(new T.ConeGeometry(.5, rand(2.5, 4), 6), body); c.position.set(Math.sin(a) * 3.6, -2.4, Math.cos(a) * 2.4); c.rotation.set(Math.cos(a) * .5, 0, -Math.sin(a) * .6); torso.add(c); }
+  // arms and hands
+  const hands = [-1, 1].map(s => {
+    const hm = new T.MeshStandardMaterial({ color: 0x06050a, emissive: 0x040108, roughness: .85, flatShading: true, fog: false });
+    const arm = umbChain(12, .58, .3, body, g);
+    const hand = new T.Group(); g.add(hand);
+    const palm = new T.Mesh(new T.SphereGeometry(.8, 10, 8), hm); palm.scale.set(1, .42, 1.05); hand.add(palm);
+    for (let i = 0; i < 4; i++) { const f = new T.Group(); f.position.set((i - 1.5) * .34, -.05, .65); f.rotation.set(1.2, 0, (i - 1.5) * -.12); hand.add(f);
+      const a = new T.Mesh(new T.ConeGeometry(.15, 1.1, 6), hm); a.position.y = .5; a.rotation.x = Math.PI; f.add(a); }
+    const th = new T.Group(); th.position.set(s * -.7, -.05, .2); th.rotation.set(.9, 0, s * 1); hand.add(th); { const a = new T.Mesh(new T.ConeGeometry(.15, .9, 6), hm); a.position.y = .42; a.rotation.x = Math.PI; th.add(a); }
+    const veins = new T.Mesh(new T.TorusGeometry(.42, .05, 4, 16), basic(0xff3b6a, { fog: false, transparent: true, opacity: 0 })); veins.rotation.x = Math.PI / 2; veins.position.y = .3; hand.add(veins);
+    const shadow = flat(new T.CircleGeometry(1.2, 28), decalMat(0x000000, .45)); g.add(shadow);
+    const tele = new T.Group(); tele.add(flat(new T.RingGeometry(.94, 1, 48), decalMat(0xff3b2f, .85))); const fill = flat(new T.CircleGeometry(1, 48), decalMat(0xff3b2f, .25)); tele.add(fill); tele.visible = false; g.add(tele);
+    return { s, arm, hand, hm, veins, shadow, tele, fill, pos: new T.Vector3(), st: 'rise', t: 0, target: new T.Vector3(), cd: 0, hit: false };
+  });
+  const neck = umbChain(6, .8, .6, body, g);
+  return { torso, tm, head, eyes, core, hands, neck, back, shoulders, B };
+}
+
+function buildUmbraRoom(room) {
+  doorObjs = []; pillars = []; stairsObj = null; shrineObj = null; altarObj = null; chaosObj = null; decorAnim.length = 0;
+  propLight.intensity = 0; $('tags').innerHTML = ''; shopSlots = [];
+  const g = roomGroup;
+  // floor disc
+  const tiles = []; for (let x = -UR - 1; x <= UR; x++) for (let z = -UR - 1; z <= UR; z++) if (Math.hypot(x + .5, z + .5) < UR + .2) tiles.push([x, z]);
+  const fl = new T.InstancedMesh(tileGeo, floorMat, tiles.length);
+  tiles.forEach(([x, z], i) => { dummy.position.set(x + .5, -.15 - Math.random() * .045, z + .5); dummy.rotation.set(0, (Math.random() - .5) * .05, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix(); fl.setMatrixAt(i, dummy.matrix);
+    const v = .085 + Math.random() * .045, r = Math.hypot(x, z) / UR; col.setRGB(v * (1.05 + .2 * r), v * .82, v * .92); fl.setColorAt(i, col); });
+  fl.receiveShadow = true; g.add(fl);
+  // broken rim stones
+  const N = 64, rim = new T.InstancedMesh(blockGeo, wallMat, N);
+  for (let i = 0; i < N; i++) { const a = i / N * TAU, back = Math.max(0, -Math.cos(a - Math.atan2(UDIR.z, UDIR.x) + Math.PI)), h = .3 + Math.random() * .35 + back * .5 * Math.random();
+    dummy.position.set(Math.cos(a) * (UR + .45), h / 2 - .1, Math.sin(a) * (UR + .45)); dummy.rotation.set(0, -a, (Math.random() - .5) * .2); dummy.scale.set(.9, h, .8); dummy.updateMatrix(); rim.setMatrixAt(i, dummy.matrix);
+    const v = .05 + Math.random() * .03; col.setRGB(v * 1.1, v * .8, v * .9); rim.setColorAt(i, col); }
+  dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1); rim.castShadow = rim.receiveShadow = true; g.add(rim);
+  // runes
+  [[2.3, 2.42, .35], [5.1, 5.2, .22], [UR - .25, UR - .15, .3]].forEach(([a, b, o]) => { const m = flat(new T.RingGeometry(a, b, 72), decalMat(0xff3b6a, o)); m.position.y = .02; g.add(m); });
+  for (let i = 0; i < 8; i++) { const a = i / 8 * TAU + TAU / 16, m = flat(new T.PlaneGeometry(.08, 2.7), decalMat(0xff3b6a, .2)); m.rotation.z = -a + Math.PI / 2; m.position.set(Math.cos(a) * 3.75, .02, Math.sin(a) * 3.75); g.add(m); }
+  // floating rubble in the abyss
+  for (let i = 0; i < 14; i++) { const a = Math.random() * TAU, d = UR + 2 + Math.random() * 5, m = new T.Mesh(blockGeo, stoneMat); m.scale.set(rand(.4, 1.2), rand(.3, .8), rand(.4, 1.2)); m.position.set(Math.cos(a) * d, rand(-2, -.4), Math.sin(a) * d); m.rotation.set(rand(0, 1), rand(0, 3), rand(0, 1)); g.add(m); }
+  // braziers
+  const braz = [];
+  for (let i = 0; i < 8; i++) {
+    const a = i / 8 * TAU + TAU / 16, x = Math.cos(a) * (UR - 1), z = Math.sin(a) * (UR - 1), b = new T.Group(); b.position.set(x, 0, z); g.add(b);
+    const ped = new T.Mesh(new T.CylinderGeometry(.24, .38, .9, 8), stoneMat); ped.position.y = .45; ped.castShadow = true;
+    const bowl = new T.Mesh(new T.CylinderGeometry(.55, .3, .32, 10), capMat); bowl.position.y = 1.02; bowl.castShadow = true;
+    const coal = new T.Mesh(new T.CylinderGeometry(.45, .45, .06, 10), basic(0x3a1408)); coal.position.y = 1.16;
+    const flame = new T.Group(); flame.position.y = 1.2;
+    const f1 = new T.Mesh(new T.ConeGeometry(.3, .8, 10), basic(0xffa640, { fog: false })); f1.position.y = .38;
+    const f2 = new T.Mesh(new T.ConeGeometry(.15, .5, 10), basic(0xfff0b8, { fog: false })); f2.position.y = .28;
+    flame.add(f1, f2, halo(0xffa640, 2.4, .55)); b.add(ped, bowl, coal, flame);
+    pillars.push({ x, z, r: .5 });
+    const ring = flat(new T.RingGeometry(.9, 1.05, 32), decalMat(0xffb347, .5)); ring.position.set(x, .05, z); ring.visible = false; g.add(ring);
+    braz.push({ x, z, flame, coal, ring, lit: true, prog: 0, seed: Math.random() * 9 });
+  }
+  torches.forEach((t, i) => { const bz = braz[i * 2]; t.g.position.set(bz.x, 1.6, bz.z); t.light.position.set(0, .3, 0); t.g.children.forEach(c => { if (!c.isLight) c.visible = false; }); });
+  // Umbra
+  const md = buildUmbraModel(g);
+  const pool = Math.round(4500 * eLevelHp());
+  const part = (r) => { const e = { type: 'umbra', ai: 'umbraPart', umb: true, def: { hp: pool, r, boss: true, poise: true, title: 'Umbra, the Last Dark', xp: 0, gold: 0, speed: 0, windup: 1, recover: 1 },
+    model: { root: new T.Group(), mats: [] }, pos: new T.Vector3(0, 0, -99), vel: new T.Vector3(), kb: new T.Vector3(), r, hp: pool, max: pool, facing: 0, state: 'spawn', t: 0, cd: 99,
+    flash: 0, walk: 0, strafe: 1, aim: 0, slamAt: new T.Vector3(), dead: false, summonAt: [], enraged: false, n: 0, rec: 1 }; enemies.push(e); return e; };
+  md.hands.forEach(h => { h.part = part(1.15); });
+  const coreRing = flat(new T.RingGeometry(1.5, 1.7, 40), decalMat(0xff3b6a, .6)); coreRing.position.copy(UDIR.clone().multiplyScalar(UR - 1.8)).setY(.05); coreRing.visible = false; g.add(coreRing);
+  const corePart = part(1.5);
+  UMB = { coreRing, md, braz, hp: pool, max: pool, phase: 1, t: 0, shift: 0, cd: 2, exhale: 14, addT: 6, lightK: 1, zoom: .72, dying: 0, corePart, headK: 0, crashed: false, next: 0,
+    lit() { return this.braz.filter(b => b.lit).length; }, bar: { def: { title: 'Umbra, the Last Dark' }, hp: pool, max: pool, type: 'umbra' } };
+  md.torso.position.y = -9; md.hands.forEach(h => h.pos.copy(umbIdle(h, 0)).setY(-4));
+}
+
+function enterUmbra() {
+  const k = rk(40, 40);
+  rooms[k] = { gx: 40, gz: 40, type: 'umbra', size: [UR, UR], doors: [], visited: false, cleared: false, dl: floor, waves: [[]] };
+  enterRoom(k, null);
+  P.pos.copy(UFWD).multiplyScalar(UR - 2.2); P.facing = Math.atan2(UDIR.x, UDIR.z); camTarget.copy(P.pos);
+  P.oil = 100; seeCx('e', 'umbra');
+  banner('Umbra, the Last Dark', 'What the dark was hiding'); sfx('roar'); shake = Math.max(shake, .5);
+}
+
+const umbIdle = (h, t) => tmpV.copy(ULAT).multiplyScalar(h.s * UR * .62).addScaledVector(UDIR, UR * .35).setY(3.0 + Math.sin(t * 1.3 + h.s) * .25);
+function umbSetPart(h, on, at) { const e = h.part || h; e.state = on ? 'idle' : 'spawn'; e.inv = !on; if (on) e.pos.set(at.x, 0, at.z); else e.pos.set(0, 0, -99); }
+
+function umbStartSlam(h, mul) { h.st = 'wind'; h.t = 0; h.dur = 1.1 * mul; h.target.set(P.pos.x, 0, P.pos.z); h.tele.visible = true; h.tele.scale.setScalar(1.9); }
+function umbStartSweep(h, mul) {
+  const pr = clamp(Math.hypot(P.pos.x, P.pos.z), 2, UR - 1.2), pa = Math.atan2(P.pos.z, P.pos.x);
+  h.st = 'sweepWind'; h.t = 0; h.dur = 1.05 * mul; h.rr = pr; h.a0 = pa + h.s * 1.35; h.a1 = pa - h.s * 1.35; h.hit = false;
+  const lo = Math.min(h.a0, h.a1), hi = Math.max(h.a0, h.a1);
+  h.band = flat(new T.RingGeometry(pr - 1.25, pr + 1.25, 48, 1, -hi, hi - lo), decalMat(0xff3b2f, .3)); h.band.position.y = .05; UMB.md.torso.parent.add(h.band);
+}
+function umbEndBand(h) { if (h.band) { h.band.parent && h.band.parent.remove(h.band); h.band.geometry.dispose(); h.band = null; } }
+
+function updateUmbHand(h, dt, mul, stuckT) {
+  h.t += dt; const P3 = UV2;
+  switch (h.st) {
+    case 'rise': case 'idle': case 'hold': { const ip = umbIdle(h, gameTime); h.pos.lerp(ip, Math.min(1, dt * 3)); break; }
+    case 'wind': {
+      if (h.t < h.dur * .7) h.target.lerp(P3.set(P.pos.x, 0, P.pos.z), Math.min(1, dt * 7));
+      h.pos.lerp(P3.set(h.target.x, 3.8, h.target.z), Math.min(1, dt * 8));
+      h.tele.position.set(h.target.x, .05, h.target.z); h.fill.scale.setScalar(Math.max(.01, h.t / h.dur));
+      if (h.t >= h.dur) { h.st = 'drop'; h.t = 0; }
+      break;
+    }
+    case 'drop':
+      h.pos.set(h.target.x, lerp(3.8, .4, clamp(h.t / .14, 0, 1)), h.target.z);
+      if (h.t >= .14) {
+        h.tele.visible = false; h.st = 'stuck'; h.t = 0; h.dur = stuckT;
+        ringFx(h.target, 0xff3b6a, .4, 2.6, .35, .9); crackFx(h.target, 1.9, 0xff3b6a); burst(h.target.clone().setY(.4), 0x14100c, 26, 6, 4); sparkFx(h.target.clone().setY(.4), 0xff6a8a, 1.8);
+        shake = Math.max(shake, .45); sfx('boom'); hitstop = Math.max(hitstop, .06);
+        if (Math.hypot(P.pos.x - h.target.x, P.pos.z - h.target.z) < 1.9 + P.r) hurtPlayer(30, h.target, h.part, true);
+        umbSetPart(h, true, h.target);
+      }
+      break;
+    case 'stuck':
+      h.pos.set(h.target.x, .4 + Math.sin(h.t * 40) * .02 * Math.max(0, 1 - h.t * 3), h.target.z);
+      if (h.t >= h.dur) { h.st = 'back'; h.t = 0; umbSetPart(h, false); }
+      break;
+    case 'sweepWind': {
+      const sp = P3.set(Math.cos(h.a0) * h.rr, 1.2, Math.sin(h.a0) * h.rr); h.pos.lerp(sp, Math.min(1, dt * 5));
+      if (h.band) h.band.material.opacity = .18 + .2 * (h.t / h.dur) + .08 * Math.sin(h.t * 25);
+      if (h.t >= h.dur) { h.st = 'sweep'; h.t = 0; h.dur = .95 * mul; sfx('dash'); }
+      break;
+    }
+    case 'sweep': {
+      const k = h.t / h.dur, a = lerp(h.a0, h.a1, k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
+      h.pos.set(Math.cos(a) * h.rr, .55, Math.sin(a) * h.rr);
+      if (Math.random() < .6) burst(h.pos.clone().setY(.2), 0x14100c, 2, 3, 2);
+      if (!h.hit && Math.hypot(P.pos.x - h.pos.x, P.pos.z - h.pos.z) < 1.35 + P.r) { const r = hurtPlayer(24, h.pos.clone(), h.part, true); if (r !== 'none') h.hit = true; }
+      if (h.t >= h.dur) { h.st = 'back'; h.t = 0; umbEndBand(h); shake = Math.max(shake, .2); }
+      break;
+    }
+    case 'back': { const ip = umbIdle(h, gameTime); h.pos.lerp(ip, Math.min(1, dt * 4)); if (h.t >= .7 * mul) { h.st = 'idle'; h.t = 0; } break; }
+  }
+}
+
+function updateUmbra(dt) {
+  const U = UMB, md = U.md; U.t += dt;
+  // damage taken by the parts this frame goes to the shared pool
+  for (const e of [md.hands[0].part, md.hands[1].part, U.corePart]) { if (e.hp < U.max) { U.hp -= U.max - e.hp; e.hp = U.max; } e.max = U.max; }
+  U.bar.hp = Math.max(0, U.hp); U.bar.max = U.max;
+  const lit = U.lit();
+  U.bar.def.title = U.phase >= 2 && !U.dying ? `Umbra · Light ${lit}/8` : 'Umbra, the Last Dark';
+  U.lightK = lerp(U.lightK, U.phase >= 2 && !U.dying ? .42 + .58 * lit / 8 : 1, Math.min(1, dt * 2));
+  // braziers: flicker, rekindle with your torch
+  for (const [i, b] of U.braz.entries()) {
+    b.flame.visible = b.lit; const f = 1 + Math.sin(gameTime * 9 + b.seed) * .08; b.flame.scale.set(1, f, 1);
+    b.coal.material.color.set(b.lit ? 0xff6a2a : 0x080504);
+    b.ring.visible = !b.lit && U.phase >= 2 && !U.dying; if (b.ring.visible) { b.ring.material.opacity = .35 + .25 * Math.sin(gameTime * 5 + b.seed) + b.prog; b.ring.scale.setScalar(1 + b.prog * .6); }
+    if (i % 2 === 0) { const t = torches[i / 2]; if (t) t.g.visible = b.lit; }
+    if (!b.lit && U.phase >= 2 && !P.dead) {
+      if (Math.hypot(P.pos.x - b.x, P.pos.z - b.z) < 1.35) { b.prog += dt; if (Math.random() < .3) burst(new T.Vector3(b.x, 1.2, b.z), 0xffa640, 1, .5, 1.5); }
+      else b.prog = Math.max(0, b.prog - dt);
+      if (b.prog >= .45) { b.lit = true; b.prog = 0; sfx('heal'); ringFx(new T.Vector3(b.x, 0, b.z), 0xffb347, .3, 1.8, .35, .8); burst(new T.Vector3(b.x, 1.3, b.z), 0xffd27a, 16, 4, 3); pop(new T.Vector3(b.x, 0, b.z), 'Rekindled', 'parry'); }
+    }
+  }
+  // body idle
+  const breathe = 1 + Math.sin(U.t * 1.1) * .015;
+  md.tm.scale.set(breathe, breathe, .72 * breathe);
+  md.eyes.forEach(e => { e.material.color.setHSL(.95, 1, .55 + .1 * Math.sin(U.t * 3)); });
+  md.core.rotation.y += dt * 1.5; md.core.scale.setScalar(1 + .12 * Math.sin(U.t * 4)); md.core.scale.y *= 1.6;
+  if (U.dying) return umbDeath(dt);
+  // rise
+  if (U.t < 3.4) md.hands.forEach(h => h.pos.lerp(umbIdle(h, gameTime), Math.min(1, dt * 1.5)));
+  if (U.t < 3.2) { md.torso.position.y = lerp(-9, -2.2, easeOut(U.t / 3.2)); if (Math.random() < .5) burst(md.B.clone().addScaledVector(UFWD, 2).setY(rand(0, 3)), 0x14100c, 2, 4, 3); }
+  // head: looks at you, then crashes into the arena in phase 3
+  const hp0 = md.torso.localToWorld(tmpV.set(0, 5.4, .8)).clone();
+  if (U.phase < 3) { md.head.position.set(0, 6.3, 1.1); md.head.rotation.y = clamp(angDiff(md.torso.rotation.y, Math.atan2(P.pos.x - md.B.x, P.pos.z - md.B.z)), -.5, .5) * .6; md.head.rotation.x = .25 + Math.sin(U.t) * .04; }
+  else {
+    const k = easeOut(clamp(U.headK, 0, 1)), dst = UDIR.clone().multiplyScalar(UR - 1.8).setY(1);
+    const w = md.torso.worldToLocal(dst.clone()); md.head.position.set(lerp(0, w.x, k), lerp(6.3, w.y, k), lerp(1.1, w.z, k)); md.head.rotation.x = lerp(.25, .9, k);
+    md.torso.rotation.x = 0; md.tm.rotation.x = .25 * k;
+  }
+  md.neck.update(hp0, md.torso.localToWorld(tmpV.copy(md.head.position)).clone(), U.phase >= 3 ? 1.5 : .2);
+  md.neck.segs.forEach(s => { s.visible = U.phase >= 3; });
+  // hands and arms
+  for (const h of md.hands) {
+    const sh = md.torso.localToWorld(tmpV.set(h.s * 2.9, 4.6, .6)).clone();
+    h.arm.update(sh, h.pos.clone().setY(h.pos.y + .3), 2.2 + .15 * sh.distanceTo(h.pos));
+    h.hand.position.copy(h.pos); h.hand.rotation.y = Math.atan2(h.pos.x - sh.x, h.pos.z - sh.z); h.hand.rotation.x = h.st === 'stuck' || h.st === 'sweep' ? .1 : .35;
+    h.shadow.position.set(h.pos.x, .04, h.pos.z); h.shadow.scale.setScalar(clamp(1.4 - h.pos.y * .15, .5, 1.3)); h.shadow.material.opacity = .25 + .3 * clamp(1 - h.pos.y / 4, 0, 1);
+    const vul = h.st === 'stuck', fl = h.part.flash > 0 ? h.part.flash / .12 : 0;
+    h.veins.material.opacity = vul ? .55 + .35 * Math.sin(U.t * 10) : 0;
+    h.hm.emissive.setRGB(.016 + fl * .6 + (vul ? .16 : 0), .004 + fl * .6, .03 + fl * .6);
+  }
+  U.coreRing.visible = U.corePart.state === 'idle'; if (U.coreRing.visible) { U.coreRing.material.opacity = .4 + .3 * Math.sin(U.t * 6); U.coreRing.scale.setScalar(1 + .05 * Math.sin(U.t * 6)); }
+  // phases
+  const frac = U.hp / U.max, want = frac > .6 ? 1 : frac > .25 ? 2 : 3;
+  if (U.hp <= 0) { umbBeginDeath(); return; }
+  if (want > U.phase && !U.shift) {
+    U.phase = want; U.shift = want === 3 ? 2.8 : 2.2; U.cd = U.shift + .6;
+    md.hands.forEach(h => { if (h.st !== 'idle' && h.st !== 'rise') { h.st = 'back'; h.t = 0; } h.tele.visible = false; umbEndBand(h); umbSetPart(h, false); });
+    umbSetPart(U.corePart, false); sfx('roar'); shake = Math.max(shake, .5);
+    if (want === 2) {
+      banner('Umbra swallows the light', 'Touch your torch to the braziers to rekindle them. Each one weakens it.');
+      U.braz.forEach(b => { if (b.lit) { b.lit = false; burst(new T.Vector3(b.x, 1.2, b.z), 0x14100c, 12, 3, 3); } }); U.exhale = 15; U.addT = 3;
+    } else { banner('Umbra falls upon the arena', 'Its core is exposed. Strike it.'); U.headK = 0; U.addT = 4; }
+  }
+  if (U.shift > 0) {
+    U.shift -= dt;
+    if (U.phase === 3) {
+      U.headK += dt / 1.6;
+      if (!U.crashed && U.headK >= 1) {
+        U.crashed = true; const at = UDIR.clone().multiplyScalar(UR - 1.8);
+        ringFx(at, 0xff3b6a, .5, 4.5, .5, .9); crackFx(at, 3, 0xff3b6a); burst(at.clone().setY(.6), 0x14100c, 40, 7, 5); shake = Math.max(shake, .8); sfx('boom');
+        if (Math.hypot(P.pos.x - at.x, P.pos.z - at.z) < 3.2) hurtPlayer(30, at, U.corePart, true);
+      }
+    }
+    if (U.shift <= 0) { U.shift = 0; if (U.phase === 3) { const at = UDIR.clone().multiplyScalar(UR - 1.8); umbSetPart(U.corePart, true, at); } }
+    return;
+  }
+  if (U.t < 3.4) return;
+  const mul = U.phase === 3 ? .75 : U.phase === 2 ? .9 : 1, stuckT = U.phase === 3 ? 1.8 : 2.4;
+  md.hands.forEach(h => { if (h.st === 'rise') { h.st = 'idle'; h.t = 0; } updateUmbHand(h, dt, mul, stuckT); });
+  // attack scheduler: one hand at a time until the last phase
+  U.cd -= dt;
+  const busy = md.hands.filter(h => h.st !== 'idle').length, maxBusy = U.phase === 3 ? 2 : 1;
+  if (U.cd <= 0 && busy < maxBusy && !P.dead) {
+    const free = md.hands.filter(h => h.st === 'idle');
+    if (free.length) {
+      const h = free.length > 1 ? (free[U.next % 2] || free[0]) : free[0]; U.next++;
+      if (U.phase >= 2 && Math.random() < .32) umbStartSweep(h, mul); else umbStartSlam(h, mul);
+      U.cd = (U.phase === 3 ? rand(1.1, 1.6) : rand(1.3, 2)) * mul;
+    }
+  }
+  // the dark fights back: snuffed braziers and shadows
+  if (U.phase >= 2) {
+    U.exhale -= dt;
+    if (U.exhale <= 0) {
+      U.exhale = U.phase === 3 ? 13 : 16;
+      const on = U.braz.filter(b => b.lit).sort(() => Math.random() - .5).slice(0, 2);
+      if (on.length) { pop(P.pos, 'Umbra exhales', 'hurt'); sfx('roar'); on.forEach(b => { b.lit = false; ringFx(new T.Vector3(b.x, 0, b.z), 0x3a1a4a, .3, 1.6, .4, .8); burst(new T.Vector3(b.x, 1.2, b.z), 0x14100c, 14, 3, 3); }); }
+    }
+    U.addT -= dt;
+    const adds = enemies.filter(e => !e.dead && !e.umb).length, cap = U.phase === 3 ? 5 : 4;
+    if (U.addT <= 0) {
+      U.addT = U.phase === 3 ? 9 : 7;
+      const n = Math.min(2, cap - adds), pool = U.phase === 3 ? UMB_ADDS.p3 : UMB_ADDS.p2;
+      for (let i = 0; i < n; i++) {
+        const b = U.braz[Math.floor(Math.random() * 8)], at = [b.x * .8, b.z * .8];
+        spawnQueue.push({ type: pool[Math.floor(Math.random() * pool.length)], at: gameTime + .2 + i * .35, pos: at });
+      }
+    }
+  }
+}
+
+function umbBeginDeath() {
+  const U = UMB; if (U.dying) return; U.dying = .0001;
+  [U.md.hands[0].part, U.md.hands[1].part, U.corePart].forEach(e => { e.dead = true; e.state = 'dead'; e.t = 0; e.pos.set(0, 0, -99); });
+  U.md.hands.forEach(h => { h.tele.visible = false; umbEndBand(h); }); U.coreRing.visible = false;
+  enemies.forEach(o => { if (!o.dead && !o.umb) { o.hp = 0; killEnemy(o); } }); spawnQueue = [];
+  arrows.filter(a => !a.friendly).forEach(a => { a.life = 0; });
+  kills++;
+  banner('Umbra falls', 'The light holds.'); sfx('boom'); shake = Math.max(shake, .9); hitstop = Math.max(hitstop, .25);
+  achieve('umbra'); addEmbers(250, P.pos); P.pendingLv = 0;
+  try { CODEX.umbra = (CODEX.umbra || 0) + 1; saveCodex(); } catch (e) {}
+}
+function umbDeath(dt) {
+  const U = UMB, md = U.md; U.dying += dt;
+  md.torso.position.y -= dt * (U.dying > 1 ? 2.4 : .4); md.hands.forEach(h => { h.pos.y -= dt * 3; h.pos.addScaledVector(UDIR, dt * 2); h.hand.position.copy(h.pos); const sh = md.torso.localToWorld(tmpV.set(h.s * 2.9, 4.6, .6)).clone(); h.arm.update(sh, h.pos, 2); });
+  md.eyes.forEach(e => { e.material.color.setRGB(Math.max(0, 1 - U.dying / 2), .2 * Math.max(0, 1 - U.dying / 2), .4 * Math.max(0, 1 - U.dying / 2)); });
+  if (Math.random() < .8) burst(md.B.clone().addScaledVector(UFWD, rand(0, 3)).setY(rand(0, 5)), Math.random() < .5 ? 0x14100c : 0xff3b6a, 3, 4, 4);
+  if (U.dying > 1.2 && !U.relit) { U.relit = true; U.braz.forEach(b => { b.lit = true; ringFx(new T.Vector3(b.x, 0, b.z), 0xffd27a, .3, 2.2, .5, .9); burst(new T.Vector3(b.x, 1.3, b.z), 0xffd27a, 20, 5, 4); }); fxFlash = 3; sfx('level'); }
+  if (U.dying > 4.2 && !U.won) { U.won = true; showWin('umbra'); }
+}
+
+// the gate that opens after the Lightless One falls
+function openChaosGate() {
+  if (P.dead || !cur || cur.boss !== 'final') return;
+  cur.cgate = true;
+  const z = -AZ + 1.4, g = new T.Group(); g.position.set(0, 0, z); roomGroup.add(g);
+  const ob = M(0x120c16, { flatShading: true, roughness: .5, metalness: .2 });
+  [-1, 1].forEach(s => { const p = new T.Mesh(new T.CylinderGeometry(.2, .42, 3.4, 5), ob); p.position.set(s * 1.35, 1.7, 0); p.rotation.z = s * .08; p.castShadow = true; g.add(p);
+    for (let i = 0; i < 3; i++) { const sp = new T.Mesh(new T.ConeGeometry(.14, .9, 4), ob); sp.position.set(s * (1.5 + i * .05), 1 + i * .9, 0); sp.rotation.z = -s * 1.1; g.add(sp); } });
+  const ring = new T.Mesh(new T.TorusGeometry(1.25, .12, 6, 40), basic(0xff3b6a, { fog: false })); ring.position.y = 1.75; g.add(ring);
+  const disc = new T.Mesh(new T.CircleGeometry(1.15, 40), basic(0x12040a, { side: T.DoubleSide, fog: false })); disc.position.set(0, 1.75, -.02); g.add(disc);
+  const swirl = new T.Group(); swirl.position.y = 1.75; g.add(swirl);
+  for (let i = 0; i < 3; i++) { const r = new T.Mesh(new T.TorusGeometry(.35 + i * .28, .03, 4, 30, 4.2), basic([0xff3b6a, 0xb06aff, 0xff9a5a][i], { fog: false, transparent: true, opacity: .8 })); swirl.add(r); }
+  ring.add(halo(0xff3b6a, 5, .45));
+  pillars.push({ x: -1.35, z, r: .4 }, { x: 1.35, z, r: .4 });
+  decorAnim.push(time => { swirl.children.forEach((r, i) => { r.rotation.z = time * (1.2 + i * .7) * (i % 2 ? -1 : 1); }); ring.scale.setScalar(1 + .03 * Math.sin(time * 3)); if (Math.random() < .25) burst(new T.Vector3(rand(-1, 1), rand(.8, 2.6), z + .1), 0xff3b6a, 1, .6, 1.5); });
+  g.scale.setScalar(.01); let k = 0; decorAnim.push(() => { if (k < 1) { k = Math.min(1, k + .03); g.scale.setScalar(easeOut(k)); } });
+  ringFx(new T.Vector3(0, 0, z), 0xff3b6a, .5, 3.5, .6, .8); burst(new T.Vector3(0, 1.7, z), 0xff3b6a, 30, 5, 4); sfx('roar');
+  banner('The Chaos Gate opens', 'Step through to face what remains, or take the stairs to end your run.');
+}
+
 /* ---------- game state ---------- */
 const TYPES = {
   goblin: { build: buildGoblin, hp: 40, r: .36, speed: 3.3, windup: .42, recover: .55, poise: false, turn: 9 },
@@ -6186,6 +6532,7 @@ function hitEnemy(e, dmg, kb, heavy, from, proc = true) {
   if (e.hp <= 0 && !e.dead) killEnemy(e);
 }
 function killEnemy(e) {
+  if (e.umb) return;
   e.dead = true; e.state = 'dead'; e.t = 0; hideTele(e); kills++;
   sfx(e.def.boss ? 'boom' : 'kill', true);
   if (e.def.boss && cur && cur.type === 'boss') bossFall(e);
@@ -6206,7 +6553,7 @@ function killEnemy(e) {
   if (e.def.boss) addEmbers(e.type === 'final' ? 150 : e.type === 'reaper' ? 60 : e.type === 'guardian' ? 40 : 12, e.pos);
   if (e.affix === 'overloaded' || e.affix2 === 'overloaded') addBlast(e.pos, true, 22, 2);
   if (e.affix === 'frozen' || e.affix2 === 'frozen') { ringFx(e.pos, 0x7fe0ff, .3, 2, .3, .7); if (P.pos.distanceTo(e.pos) < 2) enemyStatus({ def: { onHit: 'chill' } }); }
-  if (e.type === 'final') { enemies.forEach(o => { if (o !== e && !o.dead) { o.hp = 0; killEnemy(o); } }); later(2, showWin); }
+  if (e.type === 'final') { enemies.forEach(o => { if (o !== e && !o.dead) { o.hp = 0; killEnemy(o); } }); later(2.2, openChaosGate); }
   if (e.type === 'hoarder') { banner('Hoard claimed!', 'Its treasure is yours.'); choiceQ.push(() => offerItems('The hoarder’s stash')); choiceQ.push(() => offerItems('The hoarder’s stash')); }
   if (e.type === 'reaper') {
     banner('The Reaper is vanquished', 'Even death bows to you.');
@@ -6335,6 +6682,7 @@ function spawnEnemy(type, at) {
   else do {
     x = rand(-AX + 1.5, AX - 1.5); z = rand(-AZ + 1.5, AZ - 1.5); tries++;
   } while (tries < 50 && (Math.hypot(x - P.pos.x, z - P.pos.z) < Math.min(5, AX * .7) || pillars.some(p => Math.hypot(x - p.x, z - p.z) < 1.5)));
+  if (cur && cur.type === 'umbra' && Math.hypot(x, z) > AX - 2) { const k = (AX - 2) / Math.hypot(x, z); x *= k; z *= k; }
   const model = def.build();
   inkify(model.root); scene.add(model.root);
   const elite = !!(cur && (cur.elite || curseOn('horde')) && !def.boss && !def.bar && !cur.altarFight);
@@ -6400,6 +6748,7 @@ function updateEnemy(e, dt) {
   const playerAlive = !P.dead;
   if (e.ai === 'boss') { updateBoss(e, dt, toP, dist, angP); return; }
   if (e.ai === 'guardian') { updateGuardian(e, dt, toP, dist, angP); return; }
+  if (e.ai === 'umbraPart') return;
   if (e.ai === 'final') { updateFinal(e, dt, toP, dist, angP); return; }
   if (e.ai === 'reaper') { updateReaper(e, dt, toP, dist, angP); return; }
   if (e.ai === 'hoarder') { updateHoarder(e, dt, toP, dist, angP); return; }
@@ -6528,6 +6877,8 @@ function updateArrows(dt) {
 /* ---------- collisions ---------- */
 const DOOR_W = .8;
 function confinePlayer() {
+  if (cur && cur.type === 'umbra') { const d = Math.hypot(P.pos.x, P.pos.z), m = AX - .6 - P.r; if (d > m) { P.pos.x *= m / d; P.pos.z *= m / d; }
+    for (const p of pillars) { const dx = P.pos.x - p.x, dz = P.pos.z - p.z, d2 = Math.hypot(dx, dz), min = p.r + P.r; if (d2 < min && d2 > .0001) { P.pos.x = p.x + dx / d2 * min; P.pos.z = p.z + dz / d2 * min; } } return; }
   const r = P.r, open = !roomLocked && cur;
   const at = d => open && cur.doors.includes(d);
   const inN = at('N') && Math.abs(P.pos.x) < DOOR_W && P.pos.z < -AZ + r;
@@ -6549,6 +6900,8 @@ function confinePlayer() {
 }
 function confine(ent) {
   if (ent === P) return confinePlayer();
+  if (ent.umb) return;
+  if (cur && cur.type === 'umbra') { const d = Math.hypot(ent.pos.x, ent.pos.z), m = AX - .6 - ent.r; if (d > m) { ent.pos.x *= m / d; ent.pos.z *= m / d; } }
   ent.pos.x = clamp(ent.pos.x, -AX + ent.r, AX - ent.r);
   ent.pos.z = clamp(ent.pos.z, -AZ + ent.r, AZ - ent.r);
   for (const p of pillars) {
@@ -6822,6 +7175,7 @@ function animateSpider(e, md, moving, time) {
 }
 
 function animateEnemy(e, dt, time) {
+  if (e.umb) return;
   const md = e.model, rig = md.rig;
   md.root.position.copy(e.pos);
   md.root.rotation.y = e.facing;
@@ -7292,6 +7646,7 @@ function updateTransition(real) {
   if (!trans.swapped && trans.t >= H) {
     trans.swapped = true;
     if (trans.dir === 'down') nextFloor();
+    else if (trans.dir === 'umbra') enterUmbra();
     else enterRoom(rk(cur.gx + DIRV[trans.dir][0], cur.gz + DIRV[trans.dir][1]), trans.dir);
   }
   $('fade').style.opacity = trans.t < H ? trans.t / H : Math.max(0, 1 - (trans.t - H) / .25);
@@ -7365,6 +7720,7 @@ function updateRoom(dt) {
   if (relicT > 0) {
     relicT -= dt;
     if (relicT <= 0 && !P.dead) {
+      if (cur.type === 'boss' && cur.boss === 'final') choiceQ.push(() => offerRelics('The Lightless One’s hoard'));
       if (cur.type === 'boss' && cur.boss !== 'final') {
         if ((runStage === 1 || runStage === 3) && branches().length) choiceQ.push(() => openEvolution());
         choiceQ.push(() => offerRelics(`${bossName(cur.boss)}’s hoard`));
@@ -7383,7 +7739,8 @@ function updateRoom(dt) {
   }
   if (cur.stairsOpen) {
     if (Math.random() < .15) burst(new T.Vector3(rand(-.6, .6), .1, rand(-.6, .6)), 0xffb347, 1, .4, 2.5);
-    if (!trans && relicT <= 0 && !choiceQ.length && !choosing && Math.hypot(P.pos.x, P.pos.z) < .75) startTransition('down');
+    if (cur.boss === 'final' && Math.hypot(P.pos.x, P.pos.z) > 1.6) cur.offStairs = true;
+    if (!trans && relicT <= 0 && !choiceQ.length && !choosing && Math.hypot(P.pos.x, P.pos.z) < .75) { if (cur.boss === 'final') { if (cur.offStairs && !winOpen) showWin('lifted'); } else startTransition('down'); }
   }
   if (cur.type === 'shrine' && !cur.used && Math.hypot(P.pos.x, P.pos.z) < 1.9) {
     cur.used = true; sfx('heal');
@@ -7460,12 +7817,13 @@ function startGame() {
   offerUpgrades('Choose your first upgrade');
 }
 let winOpen = false;
-function showWin() {
+function showWin(kind) {
   if (P.dead) return;
+  const um = kind === 'umbra'; $('winT').textContent = um ? 'The light holds' : 'The darkness has been lifted';
   winOpen = true;
   META.wins = (META.wins || 0) + 1; saveMeta();
   endRun(true);
-  $('winS').textContent = `The Lightless One has fallen to ${aan(KL[P.klass].name)}, with ${kills} kills.`;
+  $('winS').textContent = um ? `Umbra, the Last Dark, has fallen to ${aan(KL[P.klass].name)}, with ${kills} kills.` : `The Lightless One has fallen to ${aan(KL[P.klass].name)}, with ${kills} kills.`;
   $('winE').textContent = `Victories as ${KL[P.klass].name}: ${CODEX.wins[P.klass] || 1}. Classes discovered: ${Object.keys(CODEX.disc).length} of 21.`;
   $('win').classList.add('on'); sfx('level');
 }
@@ -7481,7 +7839,7 @@ function showOver() {
   try { best = +localStorage.getItem('tb-dungeon-best') || 0; } catch (e) {}
   const isBest = runStage > best;
   if (isBest) { best = runStage; try { localStorage.setItem('tb-dungeon-best', String(runStage)); } catch (e) {} }
-  $('overT').textContent = `You fell in stage ${runStage}`;
+  $('overT').textContent = cur && cur.type === 'umbra' ? 'Umbra swallowed your light' : `You fell in stage ${runStage}`;
   $('overS').textContent = `As ${aan(KL[P.klass].name)}, with ${kills} ${kills === 1 ? 'kill' : 'kills'}.`;
   $('shop').classList.remove('on'); $('relicScreen').classList.remove('on'); choosing = false;
   $('overB').textContent = isBest ? 'That’s your deepest run yet.' : `Your deepest: stage ${best}.`;
@@ -7526,7 +7884,7 @@ function updateHUD() {
   setT('waveT', `Stage ${runStage}`);
   const mt = [stageName(), KL[P.klass].name, P.curse ? `${curseNames()} (${P.curse.left})` : '', P.burnT > 0 ? 'Burning' : '', P.chillT > 0 ? 'Chilled' : '', P.weakT > 0 ? 'Weakened' : ''].filter(Boolean).join(', ');
   if ($('modT').textContent !== mt) setT('modT', mt);
-  const boss = enemies.find(e => (e.def.boss || e.def.bar) && !e.dead);
+  const boss = UMB && !UMB.dying && UMB.t > 1 ? UMB.bar : enemies.find(e => (e.def.boss || e.def.bar) && !e.dead && !e.umb);
   const trv = !boss && cur && cur.trove && roomLocked;
   $('bossBar').classList.toggle('on', !!boss || !!trv);
   if (trv) { const tn = `Trove, ${Math.ceil(troveT)}s`; if ($('bossN').textContent !== tn) $('bossN').textContent = tn; setW('bossF', (troveT / TROVE_T * 100) + '%'); }
@@ -7570,6 +7928,7 @@ function loop() {
     try { updateArrows(dt); } catch (err) { reportErr(err); }
     try { separate(); } catch (err) { reportErr(err); }
     try { updateRoom(dt); } catch (err) { reportErr(err); }
+    try { if (UMB) updateUmbra(dt); } catch (err) { reportErr(err); }
     try { updateLoot(dt); } catch (err) { reportErr(err); }
     try { updateBlasts(dt); } catch (err) { reportErr(err); }
     try { updateOrbs(dt); updateRecs(dt); updateWard(dt); watchHeal(); if (P.deadeyeT > 0) P.deadeyeT -= dt; } catch (err) { reportErr(err); }
@@ -7588,19 +7947,19 @@ function loop() {
   if (playing && P.dead && deadT > 1.3 && !overShown) showOver();
 
   // camera
-  camTarget.lerp(P.pos, Math.min(1, real * 6));
+  camTarget.lerp(UMB ? umbCam() : P.pos, Math.min(1, real * 6));
   const sk = (reduceMotion ? .3 : 1) * shake;
   shake *= Math.exp(-9 * real);
   cam.position.copy(camTarget).add(CAM_OFF);
   cam.position.x += (Math.random() - .5) * sk; cam.position.y += (Math.random() - .5) * sk; cam.position.z += (Math.random() - .5) * sk;
   camPunch = Math.max(0, camPunch - real * .7);
-  { const zt = (innerWidth >= innerHeight ? 1.12 : 1.07) * (1 + .2 * Math.min(1, camPunch)); if (Math.abs(cam.zoom - zt) > .0005) { cam.zoom = lerp(cam.zoom, zt, Math.min(1, real * 6)); cam.updateProjectionMatrix(); } }
+  { const zt = (innerWidth >= innerHeight ? 1.12 : 1.07) * (1 + .2 * Math.min(1, camPunch)) * (UMB ? UMB.zoom : 1); if (Math.abs(cam.zoom - zt) > .0005) { cam.zoom = lerp(cam.zoom, zt, Math.min(1, real * 6)); cam.updateProjectionMatrix(); } }
   cam.lookAt(camTarget.x, camTarget.y + .4, camTarget.z);
   moon.position.set(camTarget.x + 6, 14, camTarget.z + 3); moon.target.position.copy(camTarget);
 
   // lights
   const fl = reduceMotion ? 1 : 1 + Math.sin(time * 9.3) * .06 + Math.sin(time * 23.1) * .04;
-  const ok = clamp(P.oil / 100, 0, 1);
+  const ok = clamp(P.oil / 100, 0, 1) * (UMB ? UMB.lightK : 1);
   const ofl = P.oil < 20 && !reduceMotion ? 1 + Math.sin(time * 31) * .12 * (1 - P.oil / 20) : 1;
   heroLight.position.set(P.pos.x, 2.2, P.pos.z); heroLight.intensity = lerp(.7, 1.7, ok) * fl * ofl; heroLight.distance = lerp(4.5, 9, ok);
   const r = 10 + 70 * Math.pow(ok, .8);

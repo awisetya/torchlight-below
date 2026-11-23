@@ -5342,6 +5342,7 @@ onRec('explosion', 'c_sabo', c => {
   later(.4, () => {
     for (let i = traps.length - 1; i >= 0; i--) { const tr = traps[i]; if (!tr.armed || tr.pos.distanceTo(at) > 5) continue; addBlast(tr.pos, false, 58 * 1.35, 2.3); blasts[blasts.length - 1].demo = true; ringFx(tr.pos, 0xffb347, .3, 2.4, .3, .9); scene.remove(tr.mesh); traps.splice(i, 1); }
     hazards.filter(h => h.src === 'keg' && h.mesh && h.mesh.position.distanceTo(at) < 5).forEach(h => { h.demo = true; h.t = 0; });
+    hazards.filter(h => h.src === 'powder' && h.mesh && h.mesh.position.distanceTo(at) < 5 && h.t > 0).forEach(h => { addBlast(h.mesh.position.clone().setY(0), false, 58 * 1.35, 2.3); blasts[blasts.length - 1].demo = true; h.t = 0; });
   });
 });
 // Thornwall: rolling plants a line of 3 thorn stakes
@@ -5374,8 +5375,8 @@ onRec('kill', 'c_ward', c => {
 });
 // Perfect Execution resolves last: readers (Hunter's Mark, Scope of Ruin) see the Mark before it is consumed
 function peCheck() {
-  if (!recLv('c_sharp') || MARK.count() < 3 || !ready('c_sharp', 5)) return;
-  const ts = MARK.list.slice(); pop(P.pos, 'Perfect Execution', 'crit'); flashScreen('#ffd23f', .1, .2);
+  if (!recLv('c_sharp') || peMarks() < 3 || !ready('c_sharp', 5)) return;
+  const ts = []; MARK.list.filter(x => hasSt(x, 'mark') && !x.dead).forEach(x => { for (let k = 0; k < Math.max(1, x.peN || 1); k++) ts.push(x); x.peN = 0; }); pop(P.pos, 'Perfect Execution', 'crit'); flashScreen('#ffd23f', .1, .2);
   ts.forEach((e, i) => { const t = e; later(.05 + i * .07, () => { if (t.dead) return; streak(P.pos.clone().setY(1), t.pos.clone().setY(.9), 0xffd23f, .25); procHit(t, AP() * 4, { src: 'c_sharp', kb: 4 }); MARK.consume(t); }); });
 }
 BUS.on('crit', c => { if (recLv('c_sharp') && !c.e.dead) MARK.add(c.e); peCheck(); }, { id: 'c_sharp_mark', tags: ['attack', 'special'] });
@@ -6099,6 +6100,37 @@ function relicFits(id) {
     default: return true;
   }
 }
+
+// ---- final class masteries that did nothing in boss fights or for their own class ----
+rework('c_guard', () => 'When your shields have absorbed 40% of your max health in total, or your health drops below 35%, gain a shield worth 25% of your health and release an earthquake for 450% of your Attack Power. Once every 20 seconds.');
+BUS.on('shieldAbsorb', c => {
+  if (!recLv('c_guard') || P.dead) return; P.ubAbs = (P.ubAbs || 0) + c.amt;
+  if (P.ubAbs < P.max * .4 || !ready('c_guard', 20)) return; P.ubAbs = 0;
+  P.shield = Math.max(P.shield, Math.round(P.max * .25)); P.shieldT = Math.max(P.shieldT, 6);
+  pop(P.pos, 'Unbreakable', 'crit'); shake = Math.max(shake, .4); camPunch = Math.max(camPunch, .6); flashScreen('#e8d8b0', .12, .25);
+  radial(P.pos.clone().setY(0), 3, AP() * 4.5, 'c_guard', 0xe8d8b0, { kb: 8 }); crackFx(P.pos, 2.6);
+}, { id: 'c_guard_abs' });
+rework('c_sharp', () => 'Your critical hits Mark enemies. When 3 Marks are out, on different enemies or stacked on one, you fire an execution volley: one arrow per Mark for 400% of your Attack Power, consuming them. Once every 5 seconds.');
+BUS.on('crit', c => { if (recLv('c_sharp') && !c.e.dead) { c.e.peN = Math.min(3, (c.e.peN || 0) + 1); peCheck(); } }, { id: 'c_sharp_stack', tags: ['attack', 'special'] });
+const peMarks = () => MARK.list.filter(x => hasSt(x, 'mark') && !x.dead).reduce((s, x) => s + Math.max(1, x.peN || 1), 0);
+rework('c_stalk', () => 'Killing an enemy within 2 seconds of a dodge, or killing a Hexed enemy, launches 3 shadow daggers at different nearby enemies for 250% of your Attack Power each. Once every 2 seconds. Against a boss, hitting it within 2 seconds of a dodge does the same, once every 4 seconds.');
+BUS.on('hit', c => {
+  const e = c.e; if (!recLv('c_stalk') || !e.def.boss || e.dead || gameTime - (P.lastDodgeT ?? -99) >= 2 || !ready('c_stalk_b', 4)) return;
+  const ts = [e].concat(nearby(e.pos, 8, e).slice(0, 2)); while (ts.length < 3) ts.push(e);
+  ts.forEach((t, i) => zap(P.pos, t, AP() * 2.5, 'c_stalk', 0x9a86ff, { delay: .05 + i * .06, y: 1, w: .2 }));
+}, { id: 'c_stalk_boss', tags: ['attack', 'special'] });
+rework('c_ward', () => 'Every 8th attack hit roots its target for 1 second. An enemy killed while Rooted leaves a sapling grove for 4 seconds that heals you 2% per second while you stand in it and fires a thorn every 2 seconds for 140% of your Attack Power. Up to 2 groves. Every 8th attack hit on a boss also grows a grove at its feet.');
+function wardGrove(at) {
+  const pos = at.clone().setY(0), g = new T.Group();
+  g.add(flat(new T.CircleGeometry(2, 28), decalMat(0x3a6a2a, .3))); for (let i = 0; i < 5; i++) { const s = new T.Mesh(new T.ConeGeometry(.1, .5, 5), M(0x6fbf4a)); s.position.set(rand(-1, 1), .25, rand(-1, 1)); g.add(s); }
+  g.position.copy(pos); scene.add(g); let n = 0;
+  addHazard({ src: 'c_ward', t: 4, max: 2, mesh: g, every: 1, tick: 1, fn: () => {
+    if (Math.hypot(P.pos.x - pos.x, P.pos.z - pos.z) < 2) healP(P.max * .02);
+    if (++n % 2 === 0) { const t = nearby(pos, 2.5)[0]; if (t) zap(pos, t, AP() * 1.4, 'c_ward', 0x8fe04a, { y: .5 }); }
+  } });
+}
+BUS.on('hit', c => { if (!recLv('c_ward') || c.tag !== 'attack' || !c.e.def.boss || c.e.dead || !count('c_ward_b', 8)) return; wardGrove(c.e.pos); pop(c.e.pos, 'Grove', 'info'); }, { id: 'c_ward_boss', tags: ['attack'] });
+rework('c_sabo', () => 'Every 3rd explosion detonates all your armed traps, powder kegs and burning patches within 5 meters after 0.4 seconds, each blast dealing 35% more. Once every 4 seconds.');
 
 /* ---------- game state ---------- */
 const TYPES = {

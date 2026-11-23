@@ -2889,14 +2889,14 @@ const BOONS = {
   execute:  { slot: 'attack', name: 'Executioner', color: '#b8433a', desc: l => `Attacks deal ${L3([0, 60, 90, 120], l)}% more damage to enemies below 30% health.` },
   splinter: { slot: 'attack', name: 'Splinter', color: '#c9ced6', desc: l => `Enemies killed by your attacks burst into ${L3([0, 3, 4, 5], l)} shards that deal ${L3([0, 10, 14, 18], l)} damage.` },
   momentum: { slot: 'attack', name: 'Momentum', color: '#ff9a4a', desc: l => `Each attack hit within 2 seconds of the last adds ${L3([0, 3, 4.5, 6], l)}% damage, up to 10 stacks.` },
-  bloodlet: { slot: 'attack', name: 'Bloodletting', color: '#d0533f', desc: l => `Attack hits heal you for ${L3([0, 1, 2, 3], l)} health, up to twice a second.` },
+  bloodlet: { slot: 'attack', name: 'Bloodletting', color: '#d0533f', desc: l => `Attack hits heal you for ${L3([0, .6, 1.2, 1.8], l)}% of your max health, up to twice a second.` },
   // ---- dodge ----
   frostep:  { slot: 'move', el: 'frost', name: 'Frost step', color: '#9fe3ff', desc: l => `Frost. Dodging freezes enemies around where you started for ${L3([0, 1, 1.4, 1.8], l)} seconds.` },
   flame:    { slot: 'move', el: 'fire', name: 'Flame dash', color: '#ff6a3a', desc: l => `Fire. Every dodge ends in an explosion that deals ${L3([0, 16, 24, 32], l)} damage.` },
   toxic:    { slot: 'move', el: 'venom', name: 'Toxic trail', color: '#8fe04a', desc: l => `Venom. Dodging leaves a toxic cloud for 3 seconds that poisons enemies for ${L3([0, 2, 3, 4], l)} damage per second.` },
   thunder:  { slot: 'move', el: 'storm', name: 'Thunder step', color: '#fff27a', desc: l => `Storm. Each dodge calls lightning on the nearest enemy, arcing to ${L3([0, 0, 1, 2], l)} more.` },
   phantom:  { slot: 'move', name: 'Phantom step', color: '#c98bff', desc: l => `After a dodge, your next attack deals ${L3([0, 60, 90, 120], l)}% more damage.` },
-  aegis:    { slot: 'move', name: 'Aegis step', color: '#c4b08a', desc: l => `Dodging grants a shield that absorbs ${L3([0, 8, 12, 16], l)} damage for 3 seconds.` },
+  aegis:    { slot: 'move', name: 'Aegis step', color: '#c4b08a', desc: l => `Dodging grants a shield worth ${L3([0, 5, 7.5, 10], l)}% of your max health for 3 seconds.` },
   blade:    { slot: 'move', name: 'Blade dash', color: '#dfe6f0', desc: l => `Enemies you dodge through take ${L3([0, 14, 20, 26], l)} damage.` },
   orbit:    { slot: 'move', name: 'Orbit step', color: '#9fe3ff', desc: l => `Dodging summons ${L3([0, 1, 2, 3], l)} spinning orb${l > 1 ? 's' : ''} around you for 4 seconds.` },
   swift:    { slot: 'move', name: 'Swift step', color: '#8fcf6a', desc: l => `Dodging costs ${Math.min(90, L3([0, 30, 45, 60], l))}% less ${resName()}.` },
@@ -2910,7 +2910,7 @@ const BOONS = {
   clap:     { slot: 'skill', el: 'storm', name: 'Thunderclap', color: '#fff27a', desc: l => `Storm. ${trigName()} calls lightning down on ${L3([0, 2, 3, 4], l)} enemies.` },
   plague:   { slot: 'skill', el: 'venom', name: 'Plague', color: '#8fe04a', desc: l => `Venom. ${trigName()} poisons enemies nearby with ${L3([0, 2, 3, 4], l)} stacks.` },
   vortex:   { slot: 'skill', el: 'void', name: 'Vortex', color: '#b06aff', desc: l => `Void. ${trigName()} drags enemies in a wide area toward its center.` + (l > 1 ? ` Pull strength ${l}.` : '') },
-  bulwark:  { slot: 'skill', name: 'Bulwark', color: '#c4b08a', desc: l => `${trigName()} grants a shield that absorbs ${L3([0, 12, 18, 24], l)} damage.` },
+  bulwark:  { slot: 'skill', name: 'Bulwark', color: '#c4b08a', desc: l => `${trigName()} grants a shield worth ${L3([0, 8, 12, 16], l)}% of your max health.` },
   sat:      { slot: 'skill', name: 'Satellites', color: '#b69cff', desc: l => `${trigName()} summons ${L3([0, 2, 3, 4], l)} spinning orbs around you for 8 seconds.` },
   over:     { slot: 'skill', name: 'Overcharge', color: '#ff9a4a', desc: l => `${trigName()} hits ${L3([0, 30, 50, 70], l)}% harder and covers ${L3([0, 15, 25, 35], l)}% more ground.` },
   echo:     { slot: 'skill', name: 'Echo', color: '#9fe3ff', desc: l => `${trigName()} strikes again a second later at ${L3([0, 50, 70, 90], l)}% power.` },
@@ -2918,7 +2918,7 @@ const BOONS = {
   surge:    { slot: 'skill', name: 'Surge', color: '#9a86ff', desc: l => `${trigName()} restores ${L3([0, 20, 30, 40], l)} ${resName()}.` },
   afterglow:{ slot: 'skill', name: 'Afterglow', color: '#ffe08a', desc: l => `${trigName()} heals you for ${L3([0, 6, 9, 12], l)} health.` },
   // ---- passive ----
-  leech:    { slot: 'passive', name: 'Vampire fang', color: '#d0533f', desc: l => `Heal ${L3([0, 3, 5, 7], l)} health every time you kill an enemy.` },
+  leech:    { slot: 'passive', name: 'Vampire fang', color: '#d0533f', desc: l => `Heal ${L3([0, 2, 3, 4], l)}% of your max health every time you kill an enemy.` },
   coin:     { slot: 'passive', name: 'Lucky coin', color: '#ffc83d', desc: l => `Enemies drop ${L3([0, 30, 45, 60], l)}% more gold.` },
   greed:    { slot: 'passive', name: 'Scholar', color: '#b69cff', desc: l => `Gain ${L3([0, 20, 30, 40], l)}% more experience.` },
   wick:     { slot: 'passive', name: 'Everburning wick', color: '#e8a33d', desc: l => `Your torch burns ${Math.min(95, L3([0, 35, 50, 65], l))}% slower.` },
@@ -2930,8 +2930,8 @@ const BOONS = {
   stone:    { slot: 'passive', name: 'Stone skin', color: '#a59a84', desc: l => `Take ${Math.min(60, L3([0, 10, 15, 20], l))}% less damage.` },
   evasion:  { slot: 'passive', name: 'Evasion', color: '#e6ecf5', desc: l => `${Math.min(60, L3([0, 8, 12, 16], l))}% chance to evade a hit entirely.` },
   precision:{ slot: 'passive', name: 'Precision', color: '#ffd23f', desc: l => `Critical hits deal ${L3([0, 50, 75, 100], l)}% more damage.` },
-  regen:    { slot: 'passive', name: 'Regeneration', color: '#8fe04a', desc: l => `Regenerate ${L3([0, .5, .8, 1.1], l)} health per second.` },
-  barrier:  { slot: 'passive', name: 'Barrier', color: '#9fe3ff', desc: l => `Every 8 seconds, gain a shield that absorbs ${L3([0, 10, 15, 20], l)} damage.` },
+  regen:    { slot: 'passive', name: 'Regeneration', color: '#8fe04a', desc: l => `Regenerate ${L3([0, .35, .55, .75], l)}% of your max health per second.` },
+  barrier:  { slot: 'passive', name: 'Barrier', color: '#9fe3ff', desc: l => `Every 8 seconds, gain a shield worth ${L3([0, 6, 9, 12], l)}% of your max health.` },
   // ---- duo: two elements combined ----
   plasma:    { slot: 'duo', duo: ['fire', 'storm'], name: 'Plasma', color: '#ffb347', desc: () => 'Lightning sets enemies ablaze, and deals 50% more damage to burning enemies.' },
   shatter:   { slot: 'duo', duo: ['fire', 'frost'], name: 'Thermal shock', color: '#ff9a8a', desc: () => 'Hitting a frozen enemy that is burning shatters it, dealing 35 damage around it.' },
@@ -2973,12 +2973,12 @@ function applyElems(e) {
   if ((l = bl('frost')) && Math.random() < Math.min(.6, L3([0, .15, .22, .3], l))) stunEnemy(e, e.def.boss ? .7 : 1.3, 'Frozen', true);
   if ((l = bl('storm'))) { P.hits++; if (P.hits >= 4) { P.hits = 0; lightning(e, L3([0, 2, 3, 4], l)); } }
   if ((l = bl('venom'))) poisonE(e, 1, L3([0, 2, 3, 4], l));
-  if ((l = bl('hex')) && !e.dead) e.curse = { t: 4, amt: L3([0, .15, .22, .3], l) };
+  if ((l = bl('hex')) && !e.dead) { e.curse = { t: 4, amt: L3([0, .15, .22, .3], l) }; if (typeof elemHit === 'function') elemHit(e, 'void'); }
 }
 function poisonE(e, stacks, per) {
   if (e.dead) return;
   const p = e.poison || (e.poison = { stacks: 0, per: 0, tick: .5 });
-  p.stacks = Math.min(bl('necrosis') ? 16 : 8, p.stacks + stacks); p.per = Math.max(p.per, per); p.left = 4;
+  p.stacks = Math.min(bl('necrosis') ? 16 : 8, p.stacks + stacks); p.per = Math.max(p.per, per); p.left = 4; if (typeof elemHit === 'function') elemHit(e, 'venom');
 }
 const bl = id => (P && P.fx && P.fx[id]) || 0;
 const hasRelic = id => bl(id) > 0;
@@ -3251,7 +3251,7 @@ function onDodgeStart(pos) {
       for (const e of enemies) if (!e.dead && e.state !== 'spawn' && Math.hypot(e.pos.x - c.x, e.pos.z - c.z) < 1.7 + e.r) poisonE(e, 1, per);
     });
   }
-  if (bl('aegis')) { P.shield = Math.max(P.shield, L3([0, 8, 12, 16], bl('aegis'))); P.shieldT = Math.max(P.shieldT, 3); }
+  if (bl('aegis')) { P.shield = Math.max(P.shield, Math.round(P.max * L3([0, .05, .075, .1], bl('aegis')))); P.shieldT = Math.max(P.shieldT, 3); }
   if (bl('orbit')) spawnOrbs(L3([0, 1, 2, 3], bl('orbit')), 4, 1.15, 9, 0x9fe3ff);
   const f = bl('frostep');
   if (f) {
@@ -3291,7 +3291,7 @@ function onSkill(pos) {
       if (Math.hypot(e.pos.x - pos.x, e.pos.z - pos.z) < 2.8 + e.r) ignite(e, L3([0, 15, 22, 30], l));
     }
   }
-  if ((l = bl('bulwark'))) { P.shield = Math.max(P.shield, L3([0, 12, 18, 24], l)); P.shieldT = 6; pop(P.pos, 'Shielded', 'info'); }
+  if ((l = bl('bulwark'))) { P.shield = Math.max(P.shield, Math.round(P.max * L3([0, .08, .12, .16], l))); P.shieldT = 6; pop(P.pos, 'Shielded', 'info'); }
   if ((l = bl('surge'))) P.st = Math.min(P.stMax, P.st + L3([0, 20, 30, 40], l));
   if ((l = bl('sat'))) spawnOrbs(L3([0, 2, 3, 4], l), 8, 1.7, 12, 0xb69cff);
   const near = (R, fn) => { for (const e of enemies) { if (e.dead || e.state === 'spawn') continue; if (Math.hypot(e.pos.x - pos.x, e.pos.z - pos.z) < R + e.r) fn(e); } };
@@ -3570,7 +3570,7 @@ const UPM = Object.fromEntries(UP.map(u => [u.id, u]));
 const UP_MAX = 3;
 // effects that change your numbers directly rather than through an engine hook
 const STATFX = {
-  maxhp: { name: 'Vitality', desc: l => `+${15 * l} max health.`, d: () => setMaxHp(P.max + 15) },
+  maxhp: { name: 'Vitality', desc: l => `+${8 * l}% max health.`, d: () => setMaxHp(Math.round(P.max * 1.08)) },
   might: { name: 'Might', desc: l => `+${8 * l}% damage with everything.`, d: () => { P.dmgMul += .08; } },
   agility: { name: 'Agility', desc: l => `+${6 * l}% move speed.`, d: () => { P.speedMul += .06; } },
   vigor: { name: 'Focus', desc: l => `+${20 * l} max ${resName()}.`, d: () => { P.stMax += 20; P.st += 20; } }
@@ -3683,7 +3683,7 @@ function offerUpgrades(title, sub) {
 function relicOffer() {
   const own = Object.keys(RELICS).filter(id => !P.relicIds.includes(id) && (!RELICS[id].lock || CODEX.disc[RELICS[id].lock]));
   const want = new Set(branches().concat(P.line));
-  const pref = own.filter(id => want.has(RELICS[id].aff)), rest = own.filter(id => !want.has(RELICS[id].aff) && (!RELICS[id].aff || KL[RELICS[id].aff].kit === P.cls));
+  const pref = own.filter(id => want.has(RELICS[id].aff)), rest = own.filter(id => !want.has(RELICS[id].aff) && (!RELICS[id].aff || KL[RELICS[id].aff].kit === P.cls) && relicFits(id));
   const out = [];
   const take = arr => { if (!arr.length) return; const i = Math.floor(Math.random() * arr.length); out.push(arr.splice(i, 1)[0]); };
   take(pref); take(pref); take(rest.length ? rest : pref);
@@ -3715,7 +3715,7 @@ for (const [id, r] of Object.entries(RELICS)) ITEMS['r_' + id] = { price: 85, re
   name: () => `${r.name}, relic${r.aff ? ` (+2 ${KL[r.aff].name})` : ''}`, label: () => r.name, desc: () => r.d || fxDesc(r.fx, 1), can: () => !P.relicIds.includes(id), buy: () => takeRelic(id) };
 function rollStock() {
   const pick = a => a[Math.floor(Math.random() * a.length)];
-  const pool = Object.keys(RELICS).filter(id => !P.relicIds.includes(id) && (!RELICS[id].lock || CODEX.disc[RELICS[id].lock]) && (!RELICS[id].aff || KL[RELICS[id].aff].kit === P.cls));
+  const pool = Object.keys(RELICS).filter(id => !P.relicIds.includes(id) && (!RELICS[id].lock || CODEX.disc[RELICS[id].lock]) && (!RELICS[id].aff || KL[RELICS[id].aff].kit === P.cls) && relicFits(id));
   const want = new Set(branches().concat(P.line)), pref = pool.filter(id => want.has(RELICS[id].aff));
   const ids = [];
   const r = pick(pref.length ? pref : pool); if (r) ids.push('r_' + r);
@@ -3846,7 +3846,7 @@ function updateMinions(dt) {
       if (m.alpha) { m.cd = 1.5; procHit(tgt, AP() * 1.8, { tag: 'summon', src: 'c_beast', kb: 4, from: m.pos }); sparkFx(tgt.pos.clone().setY(.8), 0xffd27a, 1.2); }
       else { SOFT = true; withTag('summon', m.kind || 'minion', () => hitEnemy(tgt, dmg, 2, false, m.pos, false)); SOFT = false; }
       BUS.emit('summonHit', { e: tgt, m, dmg });
-      if (m.kind === 'wolf' && (K() === 'beastcaller' || bl('regen')) && P.hp < P.max) gainHp(1);
+      if (m.kind === 'wolf' && (K() === 'beastcaller' || bl('regen')) && P.hp < P.max) gainHp(Math.max(1, P.max * .005));
       burst(tgt.pos.clone().setY(.7), m.kind === 'fox' ? 0xffc870 : m.beast ? 0x9ff0e0 : 0x8fe04a, 6, 3, 2);
     }
     m.walk += dt * (moving ? 12 : 0);
@@ -4781,7 +4781,7 @@ function addStatus(e, k, dur, data, quiet) {
 function clearSt(e, k) { if (e && e.st && e.st[k]) { e.st[k].t = 0; if (k === 'mark') MARK.drop(e); } }
 // Exposed: the strongest active value wins, never stacks
 function expose(e, amt, dur) { const a = hasSt(e, 'exposed') ? Math.max(e.st.exposed.amt, amt) : amt; return addStatus(e, 'exposed', dur, { amt: a }); }
-const exposedMul = e => (hasSt(e, 'exposed') ? 1 + e.st.exposed.amt : 1) * (e.umb ? umbTakeMul() : 1);
+const exposedMul = e => (hasSt(e, 'exposed') ? 1 + e.st.exposed.amt : 1) * (e.umb ? umbTakeMul() : 1) * upTakeMul(e);
 // Bleed: up to 3 stacks; a 4th refreshes the oldest. Ticks twice a second as raw DoT (rule A already scaled it).
 function bleed(e, dps, dur = 4) {
   if (!e || e.dead) return;
@@ -4930,7 +4930,7 @@ function zap(from, e, dmg, src, col, o = {}) {
 }
 function healP(amt) { const a = gainHp(amt); if (a >= 1) pop(P.pos, '+' + Math.round(a), 'heal'); }
 // every heal goes through here so overhealing can be measured (Radiance)
-function gainHp(x, show) { if (P.dead || !(x > 0)) return 0; const a = Math.min(P.max - P.hp, x); P.hp += a; if (x - a > .5) BUS.emit('overheal', { amt: x - a }); if (show && a >= 1) pop(P.pos, '+' + Math.round(a), 'info'); return a; }
+function gainHp(x, show) { if (P.dead || !(x > 0)) return 0; { const hv = recLv('hvigor'); if (hv) x *= 1 + rkv([.2, .3, .4], hv); } const a = Math.min(P.max - P.hp, x); P.hp += a; if (x - a > .5) BUS.emit('overheal', { amt: x - a }); if (show && a >= 1) pop(P.pos, '+' + Math.round(a), 'info'); return a; }
 // ground hazards (patches, clouds, fields, trails) with owner, lifetime and cap
 let hazards = [];
 function addHazard(h) {
@@ -4974,15 +4974,15 @@ onRec('kill', 'rime', (c, lv) => {
 });
 // Static: lightning on a Burning or Frozen enemy arcs once more
 rework('static', lv => `Your bolts and lightning that hit a Burning or Frozen enemy arc to another enemy for ${pct(rkv([.35, .5, .65], lv))} of the hit.`);
-onRec('hit', 'static', (c, lv) => { const e = c.e; if (P.cls !== 'mage' || e.dead || (!(e.burn && e.burn.left > 0) && !(e.frozen && e.state === 'stun')) || !readyOn(e, 'static', .5)) return; const t = nearby(e.pos, 4.5, e)[0]; if (t) zap(e.pos, t, c.dmg * rkv([.35, .5, .65], lv), 'static', 0xfff27a, { y: .9 }); }, ['attack']);
+onRec('hit', 'static', (c, lv) => { const e = c.e; if (P.cls !== 'mage' || e.dead || !upStatused(e) || !readyOn(e, 'static', .5)) return; const t = nearby(e.pos, 4.5, e)[0]; if (t) zap(e.pos, t, c.dmg * rkv([.35, .5, .65], lv), 'static', 0xfff27a, { y: .9 }); }, ['attack']);
 onRec('lightningHit', 'static', (c, lv) => {
-  const e = c.e; if (!(e.burn && e.burn.left > 0) && !(e.frozen && e.state === 'stun')) return;
+  const e = c.e; if (!upStatused(e)) return;
   const t = nearby(e.pos, 4.5, new Set([e, c.from]))[0]; if (!t || !e.lastHit) return;
   zap(e.pos, t, e.lastHit.pre * rkv([.35, .5, .65], lv), 'static', 0xfff27a, { y: .9 });
 });
 // Soulguard Orbit: an orbiting spirit eats one enemy projectile, then bursts
 rework('sward', lv => `Dodging summons an orbiting spirit (up to 3). Each orbiting spirit can catch one enemy projectile, then bursts for ${pct(rkv([1.1, 1.4, 1.7], lv))} of your Attack Power.`);
-onRec('dodgeEnd', 'sward', () => { if (orbs.filter(o => o.t > 0).length < 3) spawnOrbs(1, 8, 1.15, 9, 0x9fe3ff); });
+onRec('dodgeEnd', 'sward', () => { if (orbs.filter(o => o.t > 0).length < (inLine('summoner') ? 5 : 3)) spawnOrbs(1, 8, 1.15, 9, 0x9fe3ff); });
 REC_TICK.push(() => {
   const lv = recLv('sward'); if (!lv || !orbs.length) return;
   for (const o of orbs) {
@@ -4998,7 +4998,7 @@ REC_TICK.push(() => {
 });
 // Soul Tether: every 3rd summon hit heals you and empowers the next summon hit
 rework('tether', lv => `If you have no summons, your special calls a spirit fox for 6 seconds. Every 3rd hit by your summons heals you ${rkv([1.5, 1.5, 2], lv)}% of your health and makes their next hit ${pct(rkv([.25, .3, .35], lv))} stronger.`);
-onRec('special', 'tether', () => { if (!minions.length) spawnMinion('fox', P.pos.clone().add(new T.Vector3(1, 0, 0)), 6); });
+onRec('special', 'tether', () => { if (!minions.length) spawnMinion('fox', P.pos.clone().add(new T.Vector3(1, 0, 0)), 6); else { P.tetherBoost = 3; pop(P.pos, 'Empowered', 'info'); burst(P.pos.clone().setY(1), 0x5fd0c0, 10, 3, 2); } });
 BUS.on('summonHit', () => {
   const lv = recLv('tether'); if (!lv || !count('tether', 3) || !ready('tether', 1)) return;
   healP(P.max * rkv([.015, .015, .02], lv)); P.tetherEmp = rkv([.25, .3, .35], lv); burst(P.pos.clone().setY(1), 0x5fd0c0, 8, 3, 2);
@@ -5106,7 +5106,7 @@ onRec('special', 'howl', (c, lv) => {
 });
 REC_TICK.push(dt => { if (P.howlT > 0) P.howlT -= dt; });
 const minionMul = m => (P.howlT > 0 ? 1 + (P.howlAmt || 0) : 1);
-const minionCd = m => (P.howlT > 0 ? .8 : 1) * (m.kind === 'wolf' && P.fangT > 0 ? 1 / 1.35 : 1);
+const minionCd = m => (P.howlT > 0 ? .8 : 1) * (P.fangT > 0 ? 1 / 1.35 : 1);
 // Alpha Call (Mastery): two wolves biting one enemy within 1s call an Alpha spirit
 rework('c_beast', () => 'When two wolves bite the same enemy within a second, an Alpha spirit joins for 5 seconds, pouncing every 1.5 seconds for 180% of your Attack Power. Once every 8 seconds.');
 BUS.on('summonHit', c => {
@@ -5151,7 +5151,7 @@ onRec('kill', 'blust', (c, lv) => {
 // Fortress Stance: while shielded, every 4th attack hit sends out a ground wave
 rework('fstance', lv => `While you hold any shield, every 6th attack hit releases a ground wave that knocks enemies back, for ${pct(rkv([1.2, 1.5, 1.8], lv))} of that hit.`);
 onRec('hit', 'fstance', (c, lv) => {
-  if (c.tag !== 'attack' || !(P.shield > 0) || !count('fstance', 6)) return;
+  if (c.tag !== 'attack' || !(P.shield > 0 || hasSt(c.e, 'judged')) || !count('fstance', 6)) return;
   radial(P.pos.clone().setY(0), 2.5, c.dmg * rkv([1.2, 1.5, 1.8], lv), 'fstance', 0xc4b08a, { kb: 7 }); shake = Math.max(shake, .15);
 });
 BUS.on('shieldBreak', () => { if (P.cnt) P.cnt.fstance = 0; }, { id: 'fstance_reset' });
@@ -5178,7 +5178,7 @@ REC_TICK.push(() => {
 rework('radiance', lv => `${pct(rkv([.5, .6, .7], lv))} of your overhealing becomes a Radiant shield (up to 15% of your health). While it holds, it pulses every 2 seconds for ${pct(rkv([.9, 1.15, 1.4], lv))} of your Attack Power.`);
 onRec('overheal', 'radiance', (c, lv) => {
   const cap = P.max * .15, add = Math.min(cap - (P.radiant || 0), c.amt * rkv([.5, .6, .7], lv)); if (add <= 0) return;
-  P.radiant = (P.radiant || 0) + add; P.shield += add; P.shieldT = Math.max(P.shieldT, 6);
+  P.radiant = (P.radiant || 0) + add; P.shield += add; P._radJust = (P._radJust || 0) + add; P.shieldT = Math.max(P.shieldT, 6);
 });
 BUS.on('shieldAbsorb', () => { if (P.radiant) P.radiant = Math.min(P.radiant, P.shield); }, { id: 'radiance_abs' });
 REC_TICK.push(dt => {
@@ -5429,7 +5429,7 @@ reworkRelic('prism', 'Hitting an enemy with a second, different element (fire, f
 function elemHit(e, k) {
   if (!e || e.dead) return; const o = e.elem; e.elem = { k, t: gameTime };
   if (!own('prism') || !o || o.k === k || gameTime - o.t > 3 || !readyOn(e, 'prism', 3)) return;
-  const col = { fire: 0xff8a2a, frost: 0x9fe8ff, shock: 0xfff27a }[k];
+  const col = { fire: 0xff8a2a, frost: 0x9fe8ff, shock: 0xfff27a, venom: 0x8fe04a, void: 0xb06aff }[k];
   pop(e.pos, 'Reaction', 'crit'); radial(e.pos.clone().setY(0), 2.5, AP() * 1.5, 'prism', col, { kb: 4 }); ringFx(e.pos, 0xffffff, .3, 2.6, .3, .9);
 }
 // Ember Heart: your special on a Burning enemy creates a fire field
@@ -5479,7 +5479,7 @@ onRel('damageTaken', 'bmoon', c => {
 // Horn of Command: War Cry raises 3 spectral shields that each block a hit and slam the attacker
 reworkRelic('horn', 'Your War Cry raises 3 spectral shields around you for 6 seconds. Each blocks one enemy hit or projectile, then slams the attacker for 150% of your Attack Power and staggers it.');
 let hornG = null;
-onRel('special', 'horn', () => { if (K() !== 'warlord') return; P.hornN = 3; P.hornT2 = 6; });
+onRel('special', 'horn', () => { P.hornN = 3; P.hornT2 = 6; });
 function hornBlock(src) {
   if (!own('horn') || !(P.hornN > 0) || !(P.hornT2 > 0)) return false; P.hornN--;
   pop(P.pos, 'Blocked', 'info'); ringFx(P.pos, 0x9fc0ff, .3, 1.6, .25, .8);
@@ -5541,7 +5541,7 @@ BUS.on('lethalDamage', () => {
 // Alpha Fang: every 8 wolf bites, your wolves frenzy
 reworkRelic('fang', 'Every 8 wolf bites build Pack Ferocity. At 8, your wolves bite 35% faster for 4 seconds, and their first bite on each enemy staggers it.');
 BUS.on('summonHit', c => {
-  if (!own('fang') || !c.m || c.m.kind !== 'wolf') return;
+  if (!own('fang') || !c.m) return;
   if (P.fangT > 0) { if (!c.e.dead && !c.e.fangHit) { c.e.fangHit = 1; stunEnemy(c.e, .5, 'Staggered'); } return; }
   if (count('fang', 8)) { P.fangT = 4; enemies.forEach(e => e.fangHit = 0); pop(P.pos, 'Pack Ferocity', 'info'); }
 }, { id: 'rel_fang' });
@@ -6035,6 +6035,71 @@ function openChaosGate() {
   banner('The Chaos Gate opens', 'Step through to face what remains, or take the stairs to end your run.');
 }
 
+/* ---------- upgrade map fixes: scaling defences, dead cross-branch picks, duplicates, relic fallbacks ---------- */
+// statuses that Static (and Prism) can work off
+const upStatused = e => !!((e.burn && e.burn.left > 0) || (e.frozen && e.state === 'stun') || (e.poison && e.poison.stacks > 0) || e.curse);
+// extra damage taken by an enemy from your picks
+function upTakeMul(e) {
+  let m = 1, l;
+  if ((l = recLv('keen')) && hasSt(e, 'mark')) m *= 1 + rkv([.15, .2, .25], l);
+  if ((l = recLv('wgrow')) && e.poison && e.poison.stacks > 0) m *= 1 + rkv([.15, .2, .25], l);
+  return m;
+}
+const frenzyCap = () => 5 + (recLv('blust') && P.line.some(k => KL[k].fx && KL[k].fx.frenzy) ? 2 : 0);
+
+// ---- dead cross-branch picks get a trigger of their own ----
+rework('keen', lv => `Hitting the same enemy 3 times in a row Marks it for 5 seconds. Marked enemies take ${pct(rkv([.15, .2, .25], lv))} more damage from you, and your critical hits on them deal ${pct(rkv([.5, .65, .8], lv))} more crit damage.`);
+rework('rime', lv => `Your nova has a 25% chance to freeze what it hits. Frozen enemies shatter on death into 5 ice shards, each dealing ${pct(rkv([.55, .7, .85], lv))} of your Attack Power.`);
+onRec('hit', 'rime', c => { const e = c.e; if (c.tag !== 'special' || P.cls !== 'mage' || e.dead || e.state === 'stun' || Math.random() >= .25) return; stunEnemy(e, e.def.boss ? .7 : 1.3, 'Frozen', true); });
+rework('static', lv => `Your bolts and lightning that hit an enemy that is Burning, Frozen, Poisoned or Hexed arc to another enemy for ${pct(rkv([.35, .5, .65], lv))} of the hit.`);
+rework('radiance', lv => `${pct(rkv([.5, .6, .7], lv))} of your overhealing, and half of every shield you gain, becomes a Radiant shield (up to 15% of your health). While it holds, it pulses every 2 seconds for ${pct(rkv([.9, 1.15, 1.4], lv))} of your Attack Power.`);
+rework('tether', lv => `Your special calls a spirit fox for 6 seconds if you have no summons, or empowers your summons if you do: their next 3 hits deal 50% more. Every 3rd hit by your summons heals you ${rkv([1.5, 1.5, 2], lv)}% of your health and makes their next hit ${pct(rkv([.25, .3, .35], lv))} stronger.`);
+rework('bletting', lv => `Slam hits, spin finishers and critical hits inflict Bleed for 4 seconds (up to 3 stacks), each stack dealing ${pct(rkv([.25, .32, .4], lv))} of the hit per second. Enemies that die while Bleeding heal you ${rkv([2, 2.5, 3], lv)}%.`);
+onRec('hit', 'bletting', (c, lv) => { if (c.e.dead || !(c.tag === 'special' || (c.tag === 'attack' && c.heavy)) || !readyOn(c.e, 'bleedHv', .3)) return; bleed(c.e, c.dmg * rkv([.25, .32, .4], lv)); });
+rework('fstance', lv => `While you hold any shield, or when you hit a Judged enemy, every 6th attack hit releases a ground wave that knocks enemies back, for ${pct(rkv([1.2, 1.5, 1.8], lv))} of that hit.`);
+
+// ---- duplicates become their own thing ----
+rework('bward', lv => `Shields you gain are ${pct(rkv([.3, .4, .5], lv))} stronger and last 1 second longer.`);
+rework('hvigor', lv => `Healing you receive is ${pct(rkv([.2, .3, .4], lv))} stronger.`);
+STATFX.reckless = { name: 'Reckless', desc: l => `Deal ${12 * l}% more damage with everything, but take 10% more.`, d: () => { P.dmgMul += .12; P.reckTake = 1.1; } };
+UPM.reckless.fx = { reckless: 1 };
+UPM.wgrow.fx = { plague: 1 }; UPM.wgrow.rd = lv => `${fxDesc({ plague: 1 }, lv)} Poisoned enemies take ${pct(rkv([.15, .2, .25], lv))} more damage from you.`;
+UPM.oath.fx = { shock: 1 }; UPM.oath.rd = lv => `${fxDesc({ shock: 1 }, lv)} The shockwave also deals ${pct(rkv([.6, .8, 1], lv))} of your Attack Power.`;
+onRec('special', 'oath', (c, lv) => { if (P.cls !== 'knight' || !ready('oathw', .5)) return; radial(P.pos.clone().setY(0), 3, AP() * rkv([.6, .8, 1], lv), 'oath', 0xc4b08a, { kb: 3 }); });
+rework('blust', lv => `Grants Frenzy: each kill gives 6% more damage for 4 seconds, stacking 5 times. If you already had Frenzy, it stacks 7 times instead. A kill while Frenzy is active releases a blood arc around the fallen enemy for ${pct(rkv([1, 1.3, 1.6], lv))} of your Attack Power.`);
+UPM.blust.fx = { frenzy: 1 };
+rework('sward', lv => `Dodging summons an orbiting spirit (up to 3, or 5 for Summoners). Each orbiting spirit can catch one enemy projectile, then bursts for ${pct(rkv([1.1, 1.4, 1.7], lv))} of your Attack Power.`);
+
+// shields you gain: Bastion Ward makes them stronger, Radiance feeds on them
+REC_TICK.push(() => {
+  if (!P || P.dead) return;
+  const prev = P._shPrev ?? P.shield, g = P.shield - prev - (P._radJust || 0); P._radJust = 0;
+  if (g > .5) {
+    const bw = recLv('bward'); if (bw) { P.shield += g * rkv([.3, .4, .5], bw); P.shieldT += 1; }
+    if (recLv('radiance')) BUS.emit('overheal', { amt: g * .5 });
+  }
+  P._radJust = 0; P._shPrev = P.shield;
+});
+
+// ---- relics: fallback triggers, and offers that only show what can work ----
+reworkRelic('horn', 'Your special raises 3 spectral shields around you for 6 seconds (for a Warlord, your War Cry). Each blocks one enemy hit or projectile, then slams the attacker for 150% of your Attack Power and staggers it.');
+reworkRelic('fang', 'Every 8 hits by your summons build Pack Ferocity. At 8, your summons attack 35% faster for 4 seconds, and their first hit on each enemy staggers it.');
+reworkRelic('prism', 'Hitting an enemy with a second, different element within 3 seconds triggers an Elemental Reaction for 150% of your Attack Power around it. Fire, frost, lightning, poison and hex all count. Once every 3 seconds per enemy.');
+function relicFits(id) {
+  const has = k => (P.ups[k] || 0) > 0;
+  switch (id) {
+    case 'tower': return inLine('knight') || has('shieldd') || has('ironw');
+    case 'hawk': case 'scope': return inLine('hunter') || has('ambush');
+    case 'jaw': case 'snake': return inLine('trapper') || has('barbs');
+    case 'heartw': return inLine('trapper') && P.klass !== 'saboteur';
+    case 'chime': return inLine('elementalist');
+    case 'emberh': return inLine('elementalist') || has('kindle');
+    case 'slant': case 'fang': return inLine('summoner') || has('tether');
+    case 'wisp': return inLine('summoner') || has('sward');
+    default: return true;
+  }
+}
+
 /* ---------- game state ---------- */
 const TYPES = {
   goblin: { build: buildGoblin, hp: 40, r: .36, speed: 3.3, windup: .42, recover: .55, poise: false, turn: 9 },
@@ -6461,6 +6526,7 @@ function hitEnemy(e, dmg, kb, heavy, from, proc = true) {
   const stunned = e.state === 'stun';
   let mul = (raw ? 1 : P.dmgMul) * (stunned ? 1.5 : 1) * exposedMul(e);
   if (P.tetherEmp > 0 && ((HT && HT.tag === 'summon') || (PX && PX.tag === 'summon'))) { mul *= 1 + P.tetherEmp; P.tetherEmp = 0; }
+  if (P.tetherBoost > 0 && ((HT && HT.tag === 'summon') || (PX && PX.tag === 'summon'))) { mul *= 1.5; P.tetherBoost--; }
   const atk = proc && HS === 'attack', sp = proc && HS === 'special';
   if (e.curse) mul *= 1 + e.curse.amt;
   if (!raw) {
@@ -6511,7 +6577,7 @@ function hitEnemy(e, dmg, kb, heavy, from, proc = true) {
   if (!e.def.boss && !(e.armor > 0) && e.state === 'windup' && (!e.def.poise || heavy)) { e.state = 'recover'; e.t = 0; hideTele(e); }
   if (atk) {
     if (bl('momentum')) { P.mom = Math.min(10, P.mom + 1); P.momT = 2; }
-    if (bl('bloodlet') && P.bloodCd <= 0 && !P.dead && P.hp < P.max) { gainHp(L3([0, 1, 2, 3], bl('bloodlet'))); P.bloodCd = .5; }
+    if (bl('bloodlet') && P.bloodCd <= 0 && !P.dead && P.hp < P.max) { gainHp(P.max * L3([0, .006, .012, .018], bl('bloodlet'))); P.bloodCd = .5; }
   }
   if ((atk || sp) && e.hp > 0) applyElems(e);
   if (e.hp > 0) sigOnHit(e, atk, heavy, crit);
@@ -6560,8 +6626,8 @@ function killEnemy(e) {
     if (!(cur && cur.type === 'boss')) choiceQ.push(() => offerRelics('Death’s bounty'));
     if (cur && cur.reaper) { cur.reaper = false; later(.8, () => { if (!cur.cleared) roomCleared(); }); }
   }
-  if (bl('leech') && P.hp < P.max && !P.dead) { const h = Math.min(Math.round(L3([0, 3, 5, 7], bl('leech')) * (K() === 'necromancer' ? 1.5 : 1)), P.max - P.hp); P.hp += h; pop(P.pos, '+' + h, 'info'); }
-  if (bl('frenzy')) { P.frenzy = Math.min(5, P.frenzy + 1); P.frenzyT = 4; }
+  if (bl('leech') && P.hp < P.max && !P.dead) { const h = gainHp(P.max * L3([0, .02, .03, .04], bl('leech')) * (K() === 'necromancer' ? 1.5 : 1)); if (h >= 1) pop(P.pos, '+' + Math.round(h), 'info'); }
+  if (bl('frenzy')) { P.frenzy = Math.min(frenzyCap(), P.frenzy + 1); P.frenzyT = 4; }
   if (gc('hunger') && !P.dead) gainHp(6 * gc('hunger'));
   if (gc('tooth') && !P.dead && P.hp < P.max) { const h = Math.min(2 * gc('tooth'), P.max - P.hp); P.hp += h; }
   if (gc('brooch') && !P.dead) { P.shield += 5 * gc('brooch'); P.shieldT = 6; }
@@ -6593,7 +6659,7 @@ function hurtPlayer(dmg, srcPos, srcEnemy, heavy) {
   if (P.iframes <= 0 && P.hurtCd <= 0 && bl('evasion') && Math.random() < Math.min(.6, L3([0, .08, .12, .16], bl('evasion')))) { pop(P.pos, 'Evaded', 'info'); P.hurtCd = .3; return 'none'; }
   if (P.iframes <= 0 && P.hurtCd <= 0 && hornBlock(srcEnemy)) { P.hurtCd = .3; return 'none'; }
   if (P.iframes <= 0 && P.hurtCd <= 0 && gc('charm') && P.ward) { P.ward = false; P.wardCd = wardCd(); pop(P.pos, 'Warded', 'info'); ringFx(P.pos, 0xc4b08a, .6, 1.6, .3, .8); P.hurtCd = .3; return 'none'; }
-  dmg = Math.round(dmg * eLevelDmg() * srcTakeMul(srcEnemy) * (srcEnemy && srcEnemy.elite ? 1.35 : 1) * (srcEnemy && srcEnemy.weakT > 0 ? 1 - srcEnemy.weakAmt : 1) * (curseOn('pain') ? 1.6 : 1));
+  dmg = Math.round(dmg * (P.reckTake || 1) * eLevelDmg() * srcTakeMul(srcEnemy) * (srcEnemy && srcEnemy.elite ? 1.35 : 1) * (srcEnemy && srcEnemy.weakT > 0 ? 1 - srcEnemy.weakAmt : 1) * (curseOn('pain') ? 1.6 : 1));
   if (P.iframes > 0) {
     if (perfectDodge()) return 'dodge';
     pop(P.pos, 'Dodged', 'info');
@@ -6964,8 +7030,8 @@ function updatePlayer(dt) {
   if (curseOn('wound')) { if (P.woundHp == null || P.hp < P.woundHp) P.woundHp = P.hp; P.hp = Math.min(P.hp, P.woundHp); } else P.woundHp = null;
   if (gc('hunger') && P.hp > 1) P.hp = Math.max(1, P.hp - gc('hunger') * dt);
   P.bloodCd = Math.max(0, P.bloodCd - dt);
-  if (bl('regen') && !P.dead && P.hp < P.max) gainHp(L3([0, .5, .8, 1.1], bl('regen')) * dt);
-  if (bl('barrier')) { P.barT -= dt; if (P.barT <= 0) { P.barT = 8; P.shield = Math.max(P.shield, L3([0, 10, 15, 20], bl('barrier'))); P.shieldT = 8; ringFx(P.pos, 0x9fe3ff, .3, 1, .3, .6); } }
+  if (bl('regen') && !P.dead && P.hp < P.max) gainHp(P.max * L3([0, .0035, .0055, .0075], bl('regen')) * dt);
+  if (bl('barrier')) { P.barT -= dt; if (P.barT <= 0) { P.barT = 8; P.shield = Math.max(P.shield, Math.round(P.max * L3([0, .06, .09, .12], bl('barrier')))); P.shieldT = 8; ringFx(P.pos, 0x9fe3ff, .3, 1, .3, .6); } }
   if (hasU('heart') && P.hp < P.max) gainHp(P.max * .008 * dt);
   if (hasU('eye')) { P.eyeT -= dt; if (P.eyeT <= 0) { const t = nearestEnemy(7); if (t) { lightning(t, 1); P.eyeT = 3; } else P.eyeT = .5; } }
   if (P.frenzyT > 0) { P.frenzyT -= dt; if (P.frenzyT <= 0) P.frenzy = 0; }

@@ -497,7 +497,7 @@ const angTo = (from, to) => Math.atan2(to.x - from.x, to.z - from.z);
 const dirOf = a => new T.Vector3(Math.sin(a), 0, Math.cos(a));
 
 /* ---------- renderer & scene ---------- */
-const renderer = new T.WebGLRenderer({ canvas: $('game'), antialias: true, powerPreference: 'high-performance' });
+const renderer = new T.WebGLRenderer({ canvas: $('game'), antialias: !isTouch, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = T.PCFSoftShadowMap;
@@ -577,7 +577,8 @@ function inkWash(mat) {
 /* brown ink outlines around characters */
 const INK_EDGE = new T.MeshBasicMaterial({ color: new T.Color(0x1e1612).convertSRGBToLinear(), side: T.BackSide, fog: false, toneMapped: false });
 INK_EDGE.onBeforeCompile = sh => { sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n vec4 iwN4 = projectionMatrix * modelViewMatrix * vec4(normal, 0.0); gl_Position.xy += normalize(iwN4.xy + 1e-5) * 0.0042 * gl_Position.w;'); };
-function inkify(root) { root.traverse(o => { if (o.isMesh && !o.isInstancedMesh && !o.userData.inked && !o.userData.isEdge && o.material && o.material.isMeshStandardMaterial && o.geometry && o.geometry.attributes.normal) { o.userData.inked = 1; const h = new T.Mesh(o.geometry, INK_EDGE); h.userData.isEdge = 1; h.castShadow = false; h.raycast = () => {}; o.add(h); } }); }
+function inkBig(o) { const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); o.updateWorldMatrix(true, false); const sc = o.matrixWorld.getMaxScaleOnAxis(); return g.boundingSphere.radius * sc > .045; }
+function inkify(root) { root.traverse(o => { if (o.isMesh && !o.isInstancedMesh && !o.userData.inked && !o.userData.isEdge && o.material && o.material.isMeshStandardMaterial && o.geometry && o.geometry.attributes.normal && inkBig(o)) { o.userData.inked = 1; const h = new T.Mesh(o.geometry, INK_EDGE); h.userData.isEdge = 1; h.castShadow = false; h.raycast = () => {}; o.add(h); } }); }
 const basic = (color, o = {}) => new T.MeshBasicMaterial(Object.assign({ color }, o));
 
 // soft, rounded boxes instead of hard-edged ones
@@ -790,13 +791,14 @@ for (let i = 0; i < 4; i++) {
 }
 const propLight = new T.PointLight(0x7fe0ff, 0, 7, 2); scene.add(propLight);
 /* ---------- adaptive quality: drops a tier when frames run slow ---------- */
-const QUAL = [{ dpr: 2, sm: 2048, soft: true, lights: 4 }, { dpr: 1.5, sm: 1024, soft: false, lights: 4 }, { dpr: 1.25, sm: 1024, soft: false, lights: 2 }, { dpr: 1, sm: 512, soft: false, lights: 2 }];
+const QUAL = [{ dpr: 2, sm: 2048, soft: true, lights: 4 }, { dpr: 1.5, sm: 1024, soft: false, lights: 4 }, { dpr: 1.25, sm: 1024, soft: false, lights: 2 }, { dpr: 1, sm: 512, soft: false, lights: 2 }, { dpr: 1, sm: 512, soft: false, lights: 1, shadows: false }];
 let qLv = isTouch ? 1 : 0;
 try { const sq = +localStorage.getItem('tb-q'); if (sq > qLv && sq < QUAL.length) qLv = sq; } catch (e) {}
 function applyQual() {
-  const q = QUAL[qLv];
+  const q = QUAL[qLv]; if (typeof setInkOff === 'function') setInkOff(qLv >= 2);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.dpr)); resize();
   const type = q.soft ? T.PCFSoftShadowMap : T.PCFShadowMap;
+  const shOn = q.shadows !== false; if (renderer.shadowMap.enabled !== shOn) { renderer.shadowMap.enabled = shOn; renderer.shadowMap.type = -1; }
   if (renderer.shadowMap.type !== type) { renderer.shadowMap.type = type; scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => { m.needsUpdate = true; }); }); }
   if (moon.shadow.mapSize.x !== q.sm) { moon.shadow.mapSize.set(q.sm, q.sm); if (moon.shadow.map) { moon.shadow.map.dispose(); moon.shadow.map = null; } }
   torches.forEach((t, i) => { t.light.visible = i < q.lights; });
@@ -1301,18 +1303,18 @@ const limbCache = {};
 function limbGeo(len, r0, r1, bulge = .14) {
   const key = len.toFixed(3) + ',' + r0.toFixed(3) + ',' + r1.toFixed(3) + ',' + bulge;
   if (limbCache[key]) return limbCache[key];
-  const pts = [], n = 6, m = 10;
+  const pts = [], n = 4, m = 7;
   // one continuous profile: rounded end, a gently swelling shaft, rounded joint
   for (let i = 0; i <= n; i++) { const a = -Math.PI / 2 + i / n * Math.PI / 2; pts.push(new T.Vector2(Math.cos(a) * r1 + 1e-4, -len + Math.sin(a) * r1)); }
   for (let i = 1; i < m; i++) { const t = i / m, y = -len + t * len, r = lerp(r1, r0, t) + Math.sin(Math.PI * Math.pow(t, .8)) * bulge * r0; pts.push(new T.Vector2(r, y)); }
   for (let i = 0; i <= n; i++) { const a = i / n * Math.PI / 2; pts.push(new T.Vector2(Math.cos(a) * r0 + 1e-4, Math.sin(a) * r0)); }
-  return (limbCache[key] = new T.LatheGeometry(pts, 18));
+  const lg = (limbCache[key] = new T.LatheGeometry(pts, 12)); lg.userData.keep = 1; return lg;
 }
 function torsoGeo(w, ch, bh) {
   const pts = [[.0001, -bh - .01], [w * .7, -bh], [w * .8, -bh * .5], [w * .86, 0], [w * .97, ch * .45], [w, ch * .8], [w * .92, ch * 1.05], [w * .6, ch * 1.3], [w * .25, ch * 1.42], [.0001, ch * 1.45]];
-  return new T.LatheGeometry(pts.map(p => new T.Vector2(p[0], p[1])), 22);
+  return new T.LatheGeometry(pts.map(p => new T.Vector2(p[0], p[1])), 14);
 }
-const SPH = new T.SphereGeometry(1, 22, 16);
+const SPH = new T.SphereGeometry(1, 14, 10); SPH.userData.keep = 1;
 function blob(b, mat, s, p, parent) { const me = new T.Mesh(SPH, mat); me.scale.set(s[0], s[1], s[2]); me.position.set(p[0], p[1], p[2]); me.castShadow = true; (parent || b.rig).add(me); return me; }
 function limb(b, mat, d, parent) { const me = new T.Mesh(limbGeo(d[0], d[1], d[2]), mat); me.castShadow = true; parent.add(me); return me; }
 function joint(parent, x, y, z) { const g = new T.Group(); g.position.set(x, y, z); parent.add(g); return g; }
@@ -1379,7 +1381,7 @@ const headCache = {};
 function headGeo(o = {}) {
   const P = Object.assign({ crown: 1, cheek: .9, jaw: .74, chin: .38, brow: .1, jawFwd: .05, back: 1, len: 1.1, flat: .9, nose: .06 }, o);
   const key = JSON.stringify(P); if (headCache[key]) return headCache[key];
-  const g = new T.SphereGeometry(1, 30, 24), p = g.attributes.position;
+  const g = new T.SphereGeometry(1, 18, 14), p = g.attributes.position;
   const K = [[-1, P.chin], [-.6, P.jaw], [-.12, P.cheek], [.35, P.crown], [1, P.crown]];
   const W = t => { for (let i = 1; i < K.length; i++) if (t <= K[i][0]) { const u = sstep(K[i - 1][0], K[i][0], t); return K[i - 1][1] + (K[i][1] - K[i - 1][1]) * u; } return P.crown; };
   for (let i = 0; i < p.count; i++) {
@@ -1394,7 +1396,7 @@ function headGeo(o = {}) {
     p.setXYZ(i, x, y * P.len, z);
   }
   g.computeVertexNormals();
-  return (headCache[key] = g);
+  g.userData.keep = 1; return (headCache[key] = g);
 }
 // torso from a side profile: radius at pelvis, waist, ribs, chest and shoulders, then squashed front to back
 function torsoProfile(b, mat, parent, o) {
@@ -3798,7 +3800,7 @@ function restyleHero() {
   hero.root.position.copy(pos); hero.root.rotation.y = ry; scene.add(hero.root);
   const C = CLASSES[P.cls]; $('bBlock').textContent = KL[P.klass].btn || C.btn[2]; setSkillIcons(P.cls, P.klass);
 }
-function inkifyHero(h) { if (typeof inkify === 'function') inkify(h.root); }
+function inkifyHero(h) { bakeStatic(h); if (typeof inkify === 'function') inkify(h.root); }
 
 // ----- minions: spirit wolves and raised skeletons -----
 let minions = [];
@@ -6132,6 +6134,81 @@ function wardGrove(at) {
 BUS.on('hit', c => { if (!recLv('c_ward') || c.tag !== 'attack' || !c.e.def.boss || c.e.dead || !count('c_ward_b', 8)) return; wardGrove(c.e.pos); pop(c.e.pos, 'Grove', 'info'); }, { id: 'c_ward_boss', tags: ['attack'] });
 rework('c_sabo', () => 'Every 3rd explosion detonates all your armed traps, powder kegs and burning patches within 5 meters after 0.4 seconds, each blast dealing 35% more. Once every 4 seconds.');
 
+/* ---------- performance: bake rigid parts of a character into one mesh per material ---------- */
+// A model is many small meshes hung on animated joints. Meshes that share a parent and a material
+// never move relative to each other, so they can be drawn as one. Anything the model object points
+// at by name (eyes, weapons, glows) is left alone, since code may move, hide or recolor it.
+function bakeStatic(model) {
+  const root = model && model.root; if (!root || root.userData.baked) return;
+  root.userData.baked = 1;
+  const keep = new Set(), seen = new Set();
+  const grab = (v, d) => {
+    if (!v || typeof v !== 'object' || seen.has(v) || d > 3) return; seen.add(v);
+    if (v.isObject3D) { if (v !== root) keep.add(v); return; }
+    if (v.isMaterial || v.isBufferGeometry || v.isVector3 || v.isColor) return;
+    if (Array.isArray(v)) { v.forEach(x => grab(x, d + 1)); return; }
+    for (const k in v) if (k !== 'root') grab(v[k], d + 1);
+  };
+  grab(model, 0);
+  root.updateMatrixWorld(true);
+  const groups = [];
+  root.traverse(p => {
+    if (!p.children.length) return;
+    const by = new Map();
+    for (const c of p.children) {
+      if (!c.isMesh || c.isInstancedMesh || c.isSkinnedMesh || c.children.length || keep.has(c) || !c.visible || !c.material || Array.isArray(c.material)) continue;
+      if (Object.keys(c.userData).length || c.onBeforeRender !== T.Object3D.prototype.onBeforeRender) continue;
+      const g = c.geometry; if (!g || !g.attributes.position || !g.attributes.normal || g.morphAttributes.position) continue;
+      const k = c.material.uuid + (c.castShadow ? 's' : '') + (c.receiveShadow ? 'r' : '') + c.renderOrder;
+      if (!by.has(k)) by.set(k, []); by.get(k).push(c);
+    }
+    by.forEach(list => { if (list.length > 1) groups.push([p, list]); });
+  });
+  for (const [p, list] of groups) {
+    let n = 0; const parts = list.map(c => { c.updateMatrix(); const g = c.geometry.index ? c.geometry.toNonIndexed() : c.geometry.clone(); g.applyMatrix4(c.matrix); n += g.attributes.position.count; return g; });
+    const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3); let o = 0;
+    for (const g of parts) { pos.set(g.attributes.position.array, o * 3); nor.set(g.attributes.normal.array, o * 3); o += g.attributes.position.count; g.dispose(); }
+    const geo = new T.BufferGeometry(); geo.setAttribute('position', new T.BufferAttribute(pos, 3)); geo.setAttribute('normal', new T.BufferAttribute(nor, 3)); geo.computeBoundingSphere();
+    const m = new T.Mesh(geo, list[0].material); m.castShadow = list[0].castShadow; m.receiveShadow = list[0].receiveShadow; m.renderOrder = list[0].renderOrder; m.userData.bakedGeo = 1;
+    list.forEach(c => p.remove(c)); p.add(m);
+  }
+  // one ink outline per joint instead of one per part
+  if (typeof INK_EDGE === 'undefined') return;
+  const joints = new Set(); root.traverse(o => { if (o.isMesh && o.parent && !keep.has(o)) joints.add(o.parent); });
+  joints.forEach(p => {
+    const list = p.children.filter(c => c.isMesh && !c.isInstancedMesh && !keep.has(c) && !c.children.length && c.visible && c.material && c.material.isMeshStandardMaterial && !c.material.transparent && c.geometry && c.geometry.attributes.normal);
+    if (list.length < 2) return;
+    let n = 0; const parts = list.map(c => { c.updateMatrix(); const g = c.geometry.index ? c.geometry.toNonIndexed() : c.geometry.clone(); g.applyMatrix4(c.matrix); n += g.attributes.position.count; return g; });
+    const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3); let o = 0;
+    for (const g of parts) { pos.set(g.attributes.position.array, o * 3); nor.set(g.attributes.normal.array, o * 3); o += g.attributes.position.count; g.dispose(); }
+    const geo = new T.BufferGeometry(); geo.setAttribute('position', new T.BufferAttribute(pos, 3)); geo.setAttribute('normal', new T.BufferAttribute(nor, 3)); geo.computeBoundingSphere();
+    const h = new T.Mesh(geo, INK_EDGE); h.userData.isEdge = 1; h.userData.bakedGeo = 1; h.castShadow = false; h.raycast = () => {}; p.add(h);
+    list.forEach(c => { c.userData.inked = 1; });
+  });
+}
+// weak devices: the auto quality step drops enemy outlines first
+var inkOff;
+function setInkOff(v) { inkOff = v; if (typeof scene === 'undefined' || !scene) return; scene.traverse(o => { if (o.userData && o.userData.isEdge && o.userData.enemyInk) o.visible = !v; }); }
+// free the merged geometry when a model goes away (shared geometries are left alone)
+function freeBaked(root) { if (root) root.traverse(o => { if (o.userData && o.userData.bakedGeo && o.geometry) o.geometry.dispose(); }); }
+
+// ---- geometry cleanup: free GPU buffers of geometry nothing in the scene uses any more ----
+// Effects and removed enemies leave their geometry on the GPU. Every geometry registers here when it
+// gets its first attribute; a sweep every few seconds frees the ones no longer drawn. A freed geometry
+// that comes back into use simply uploads again, so this can never break anything that is still alive.
+const GEO_LIVE = new Set();
+{ const sa = T.BufferGeometry.prototype.setAttribute;
+  T.BufferGeometry.prototype.setAttribute = function (n, a) { if (!this.__trk) { this.__trk = 1; GEO_LIVE.add(this); } return sa.call(this, n, a); }; }
+function geoSweep() {
+  if (typeof scene === 'undefined' || !scene) return;
+  const used = new Set(); scene.traverse(o => { if (o.geometry) used.add(o.geometry); });
+  if (typeof cam !== 'undefined' && cam) cam.traverse(o => { if (o.geometry) used.add(o.geometry); });
+  let n = 0;
+  GEO_LIVE.forEach(g => { if (used.has(g) || g.userData.keep) return; g.dispose(); GEO_LIVE.delete(g); g.__trk = 0; n++; });
+  return n;
+}
+setInterval(() => { try { geoSweep(); } catch (e) {} }, 4000);
+
 /* ---------- game state ---------- */
 const TYPES = {
   goblin: { build: buildGoblin, hp: 40, r: .36, speed: 3.3, windup: .42, recover: .55, poise: false, turn: 9 },
@@ -6782,7 +6859,7 @@ function spawnEnemy(type, at) {
   } while (tries < 50 && (Math.hypot(x - P.pos.x, z - P.pos.z) < Math.min(5, AX * .7) || pillars.some(p => Math.hypot(x - p.x, z - p.z) < 1.5)));
   if (cur && cur.type === 'umbra' && Math.hypot(x, z) > AX - 2) { const k = (AX - 2) / Math.hypot(x, z); x *= k; z *= k; }
   const model = def.build();
-  inkify(model.root); scene.add(model.root);
+  bakeStatic(model); model.root.traverse(o => { if (o.isMesh) o.castShadow = false; }); inkify(model.root); model.root.traverse(o => { if (o.userData.isEdge) { o.userData.enemyInk = 1; if (inkOff) o.visible = false; } }); scene.add(model.root);
   const elite = !!(cur && (cur.elite || curseOn('horde')) && !def.boss && !def.bar && !cur.altarFight);
   const hp = Math.round(def.hp * eLevelHp() * (elite ? 1.9 : 1) * (1 + .25 * gc('die')) * (floorMod === 'gilded' ? 1.2 : floorMod === 'swarm' && !def.boss ? .75 : 1));
   const e = { type, ai: def.ai, def, model, pos: new T.Vector3(x, 0, z), vel: new T.Vector3(), kb: new T.Vector3(), r: def.r,
@@ -7851,7 +7928,7 @@ function updateRoom(dt) {
   }
 }
 function removeEnemy(e) {
-  scene.remove(e.model.root);
+  scene.remove(e.model.root); freeBaked(e.model.root);
   if (e.model.slam) scene.remove(e.model.slam);
   if (e.model.line && e.model.line.parent === scene) scene.remove(e.model.line);
 }

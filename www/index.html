@@ -7987,7 +7987,7 @@ function renderCampOrig() {
   ['fighter', 'archer', 'mage'].forEach(b0 => {
     const col = document.createElement('div'); col.className = 'cx-tree';
     const card = (id, cls) => { const k = KL[id], d = !!CODEX.disc[id], w = CODEX.wins[id] || 0;
-      return `<div class="cx ${cls} ${d ? 'has-pt' : 'locked'}" data-id="${id}" style="--c:${k.color}">${d ? `<img class="cx-pt" src="${heroArt(id)}" alt="">` : ''}<b>${d ? k.name : '???'}</b><small>${['Base', 'Specialised', 'Final'][k.tier]}${w ? ` · ${w} win${w > 1 ? 's' : ''}` : ''}</small>${d ? `<span>${k.tier ? `<em>${k.sig}.</em> ${k.sigD}` : k.desc}</span>` : `<span>Evolve from ${KL[k.parent].name} to discover.</span>`}</div>`; };
+      return `<div class="cx ${cls} ${d ? 'has-pt' : 'locked'}" data-id="${id}" style="--c:${k.color}">${d ? `<img class="cx-pt" src="${clsArt(id)}" alt="">` : ''}<b>${d ? k.name : '???'}</b><small>${['Base', 'Specialised', 'Final'][k.tier]}${w ? ` · ${w} win${w > 1 ? 's' : ''}` : ''}</small>${d ? `<span>${k.tier ? `<em>${k.sig}.</em> ${k.sigD}` : k.desc}</span>` : `<span>Evolve from ${KL[k.parent].name} to discover.</span>`}</div>`; };
     let h = card(b0, 't0');
     KL[b0].kids.forEach(t1 => { h += `<div class="cx-branch">${card(t1, 't1')}<div class="cx-leaves">${KL[t1].kids.map(t2 => card(t2, 't2')).join('')}</div></div>`; });
     col.innerHTML = h; box.appendChild(col);

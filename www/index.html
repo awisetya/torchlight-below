@@ -2205,6 +2205,7 @@ function crownRing(b, gold, parent, y, r, peaks) {
   peaks.forEach(([a, h, w]) => { const c = b.add(new T.ConeGeometry(w, h, 4), gold, Math.sin(a) * r, y + .028 + h / 2, Math.cos(a) * r, parent); c.rotation.y = a; c.scale.z = .45; });
 }
 function buildGuardian(gc) {
+  if ((gc || stage().gcol).glow === 0xd06aff) return buildHerald(gc || stage().gcol);
   const st = { gcol: gc || stage().gcol }, b = rigBase(0);
   humanoid(b, { skin: 0xd9d2bd, top: st.gcol.robe, legs: st.gcol.robe, boots: st.gcol.robe, arm: st.gcol.robe, hand_c: 0xd9d2bd,
     upper: [.28, .055, .045], fore: [.26, .045, .035], chest: [.22, .2, .16], shW: .24 });
@@ -5590,13 +5591,13 @@ const CX_EN = [
   { k: 'imp', n: 'Fire Imp', st: 1, t: 'Shooter', d: 'Throws fireballs that hit harder than arrows. A priority target.' },
   { k: 'brute', n: 'Magma Brute', st: 1, t: 'Heavy', d: 'A tougher orc that hits harder. Never trade blows with it head-on.' },
   { k: 'guardian@1', n: 'The Cinder King', st: 1, t: 'Boss', d: 'Rains volleys of fire, makes the floor erupt beneath you, blinks away and heals itself. Stay mobile.' },
-  { k: 'icegob', n: 'Frost Goblin', st: 2, t: 'Swarmer', d: 'Its hits chill you, slowing your movement. Do not let a pack pin you down.' },
-  { k: 'frostarcher', n: 'Frost Archer', st: 2, t: 'Shooter', d: 'Ice arrows that chill on hit. Getting slowed by one makes the next easier to land.' },
-  { k: 'yeti', n: 'Yeti', st: 2, t: 'Heavy', d: 'Big, durable and its blows chill you. Fight it in the open.' },
+  { k: 'icegob', n: 'Frostbite Gremlin', st: 2, t: 'Swarmer', d: 'Icicle daggers in both hands. Its hits chill you, slowing your movement. Do not let a pack pin you down.' },
+  { k: 'frostarcher', n: 'Frozen Crossbowman', st: 2, t: 'Shooter', d: 'A soldier sealed in ice. Its bolts chill on hit. Getting slowed by one makes the next easier to land.' },
+  { k: 'yeti', n: 'Yeti', st: 2, t: 'Heavy', d: 'Knuckles the floor between slams. Big, durable and its blows chill you. Fight it in the open.' },
   { k: 'reaper', n: 'The Reaper', st: 2, t: 'Boss', d: 'Relentless and fast. Long reaping swings with a short warning. It also stalks other floors: when it appears, run for a door.' },
-  { k: 'voidling', n: 'Voidling', st: 3, t: 'Swarmer', d: 'The fastest enemy in the game. Its hits weaken you, so you deal less damage for a while.' },
-  { k: 'voidimp', n: 'Void Imp', st: 3, t: 'Shooter', d: 'Fires void bolts that weaken you on hit.' },
-  { k: 'voidbrute', n: 'Void Brute', st: 3, t: 'Heavy', d: 'The toughest regular enemy. Weakens you on hit and hits very hard.' },
+  { k: 'voidling', n: 'Void Mite', st: 3, t: 'Swarmer', d: 'A floating eye that lunges with its maw. The fastest enemy in the game. Its hits weaken you, so you deal less damage for a while.' },
+  { k: 'voidimp', n: 'Void Acolyte', st: 3, t: 'Shooter', d: 'Gathers the orbs around its hands, then fires void bolts that weaken you on hit.' },
+  { k: 'voidbrute', n: 'Spire Colossus', st: 3, t: 'Heavy', d: 'Crystal held together by light; it splits apart before the fist comes down. The toughest regular enemy. Weakens you on hit and hits very hard.' },
   { k: 'guardian@3', n: 'The Void Herald', st: 3, t: 'Boss', d: 'Volleys, eruptions, blinks and self-healing, faster and meaner than the Cinder King.' },
   { k: 'final', n: 'The Lightless One', st: 4, t: 'Final boss', d: 'Shifts between phases: spiral volleys, expanding rings and floor eruptions. Learn each phase before you commit.' },
   { k: 'hoarder', n: 'Gilded Hoarder', st: -1, t: 'Rare', d: 'Appears by chance and runs from you carrying gold. Catch it before it burrows away.' }
@@ -6209,6 +6210,403 @@ function geoSweep() {
 }
 setInterval(() => { try { geoSweep(); } catch (e) {} }, 4000);
 
+/* ---------- stage 2 and 3 roster: own bodies instead of recolors ---------- */
+let M2_SEED = 7;
+const m2r = () => (M2_SEED = (M2_SEED * 16807) % 2147483647) / 2147483647;
+const M2_UP = new T.Vector3(0, 1, 0);
+// cone tufts on an ellipsoid, tips pointing outward and down so the fur reads as hanging shag
+function shag(b, mat, parent, c, rad, n, len, w, o = {}) {
+  const geo = new T.ConeGeometry(w, len, 5);
+  for (let i = 0; i < n; i++) {
+    const th = (o.th0 ?? .25) + m2r() * ((o.th1 ?? 2.6) - (o.th0 ?? .25)), ph = (o.ph0 ?? 0) + m2r() * (o.phL ?? Math.PI * 2);
+    const nx = Math.sin(th) * Math.sin(ph), ny = Math.cos(th), nz = Math.sin(th) * Math.cos(ph);
+    const me = new T.Mesh(geo, mat), dir = new T.Vector3(nx, ny - (o.droop ?? 1.3), nz).normalize();
+    me.quaternion.setFromUnitVectors(M2_UP, dir);
+    const l = len * (.75 + m2r() * .5); me.scale.set(1, l / len, 1);
+    me.position.set(c[0] + nx * rad[0], c[1] + ny * rad[1], c[2] + nz * rad[2]).addScaledVector(dir, l * .38);
+    me.castShadow = true; parent.add(me);
+  }
+}
+function crystal(b, mat, parent, x, y, z, s, sc, rot) {
+  const me = new T.Mesh(new T.OctahedronGeometry(s, 0), mat); me.position.set(x, y, z);
+  if (sc) me.scale.set(sc[0], sc[1], sc[2]); if (rot) me.rotation.set(rot[0], rot[1], rot[2]);
+  me.castShadow = true; parent.add(me); return me;
+}
+function stripLimbs(b) { b.legsJ.forEach(l => [l.hip, l.knee, l.ankle].forEach(j => j.children.slice().forEach(c => { if (c.isMesh) j.remove(c); }))); }
+
+// Yeti: hunched ape, knuckles near the floor, shaggy white coat, blue face, two short horns; slams with both fists
+function buildYeti() {
+  M2_SEED = 11;
+  const b = rigBase(0), furC = 0xe9eef3, hideC = 0x5f86ad;
+  humanoid(b, { skin: furC, top: furC, legs: furC, boots: hideC, arm: furC, hand_c: hideC, slouch: .75,
+    thigh: [.26, .12, .1], shin: [.24, .1, .085], upper: [.42, .11, .09], fore: [.4, .1, .085], chest: [.34, .3, .27], belly: [.3, .24, .24],
+    pelvis: [.3, .15, .22], neck: .07, head: .165, headS: [1.05, 1, 1.05], shW: .4, hipW: .16, hand: .1, foot: [.1, .06, .16] });
+  b.crouch = .3;
+  const fur = b.mt.top, furD = b.m(0xc9d4df), hide = b.m(hideC, { roughness: .6 }), horn = b.m(0x39414e), dk = basic(0x0b1018);
+  const ice = b.m(0xc4ecff, { roughness: .18, metalness: .2, flatShading: true });
+  swapTorso(b, { bh: b.L.belly[1] + .06, ch: .3, waist: .28, rib: .36, chest: .38, shoulder: .36, front: .95, backD: 1.1 }, fur);
+  blob(b, fur, [.37, .27, .27], [0, .4, -.1], b.chest);
+  b.neck.position.set(0, b.L.chest[1] * 1.0, .22);
+  swapHead(b, headGeo({ crown: .9, cheek: 1, jaw: .95, chin: .7, brow: .28, jawFwd: .15, nose: .06, len: .9, flat: 1 }), [1.1, .95, 1.05], fur);
+  const hc = b.L.head * .95;
+  blob(b, hide, [.12, .11, .07], [0, hc - .02, .13], b.head);
+  blob(b, furD, [.16, .05, .07], [0, hc + .065, .13], b.head);
+  glowEyes(b, 0x8fe6ff, .045, hc + .015, .195, .016, 1);
+  b.add(new T.BoxGeometry(.1, .018, .02), dk, 0, hc - .08, .192, b.head);
+  [-1, 1].forEach(s => { const f = b.add(new T.ConeGeometry(.011, .04, 5), b.m(0xeae4d2), s * .035, hc - .092, .195, b.head); f.rotation.x = Math.PI; });
+  [-1, 1].forEach(s => { const h = b.add(new T.ConeGeometry(.04, .19, 6), horn, s * .13, hc + .12, .0, b.head); h.rotation.set(-.35, 0, s * -.75); blob(b, horn, [.045, .03, .045], [s * .11, hc + .09, 0], b.head); });
+  // shag: chest, hump, shoulders, forearms, thighs and the back of the head
+  shag(b, fur, b.chest, [0, .22, 0], [.37, .3, .27], 60, .22, .06, { th0: .7, th1: 2.5 });
+  shag(b, furD, b.chest, [0, .05, 0], [.3, .2, .25], 30, .2, .055, { th0: 1.4, th1: 2.6 });
+  shag(b, fur, b.chest, [0, .4, -.1], [.36, .26, .26], 34, .2, .06, { th0: .1, th1: 1.6, ph0: Math.PI * .5, phL: Math.PI });
+  shag(b, furD, b.spine, [0, .02, 0], [.3, .1, .24], 22, .2, .05, { th0: 1.2, th1: 2.2, droop: 1.8 });
+  b.arms.forEach(a => { shag(b, fur, a.sh, [0, -.12, 0], [.12, .16, .12], 18, .17, .045); shag(b, furD, a.el, [0, -.2, 0], [.1, .18, .1], 18, .16, .042, { droop: .9 }); blob(b, fur, [.14, .13, .14], [0, .02, 0], a.sh); });
+  b.legsJ.forEach(l => shag(b, fur, l.hip, [0, -.13, 0], [.13, .14, .12], 16, .17, .05));
+  shag(b, fur, b.head, [0, hc + .02, -.04], [.15, .13, .13], 9, .12, .04, { ph0: Math.PI * .6, phL: Math.PI * .8, th0: .3, th1: 1.8 });
+  [[-.14, .58, -.26, .06], [.06, .62, -.24, .05], [.18, .52, -.2, .045]].forEach(([x, y, z, s]) => crystal(b, ice, b.chest, x, y, z, s, [1, 2.2, 1], [-.5, m2r(), x * 2]));
+  clearHands(b); b.arms.forEach(a => { const f = fist(b, hide, .1, a.hand); shag(b, fur, f, [0, .06, 0], [.1, .06, .1], 5, .09, .03, { th0: .3, th1: 1.4 }); });
+  clearFeet(b); b.legsJ.forEach(l => toes(b, hide, l.ankle, b.L, 3, 1.1));
+  b.weapon = b.main.hand;
+  slamDecal(b, 1.92);
+  return b;
+}
+
+// Frostbite Gremlin: goblin-sized, fur hood with its face poking out, a crest of ice spikes down the back, an icicle dagger in each hand
+function buildGremlin() {
+  M2_SEED = 23;
+  const b = rigBase(0), skinC = 0x86a9bd;
+  humanoid(b, { skin: skinC, top: 0xb9c3cf, legs: 0x34404e, boots: skinC, arm: skinC,
+    thigh: [.2, .05, .04], shin: [.2, .04, .03], upper: [.16, .04, .03], fore: [.15, .036, .028], chest: [.15, .13, .11], belly: [.12, .1, .09],
+    pelvis: [.12, .07, .09], neck: .03, head: .12, headS: [1.1, .95, 1.08], shW: .15, hipW: .07, hand: .034, foot: [.042, .03, .085], slouch: .42 });
+  b.crouch = .5; b.tilt = .14;
+  const skin = b.mt.skin, fur = b.mt.top, furD = b.m(0xe6ebf0, { side: T.DoubleSide }), leather = b.m(0x2a2026);
+  const ice = b.m(0xc8f0ff, { roughness: .15, metalness: .25, flatShading: true }), iceD = b.m(0x7fc4e8, { roughness: .2, metalness: .2, flatShading: true });
+  swapHead(b, headGeo({ crown: .95, cheek: 1, jaw: .8, chin: .45, brow: .18, jawFwd: .25, nose: .2, len: .95, back: .95 }), [1.1, .95, 1.08]);
+  swapTorso(b, { bh: b.L.belly[1] + .06, ch: .13, waist: .1, rib: .135, chest: .15, shoulder: .15, front: .85, backD: .9 }, fur);
+  const hc = b.L.head * .95;
+  // hood: open over the face, a ruff of fur along the opening, two ear bumps
+  fur.side = T.DoubleSide;
+  const hood = new T.Mesh(shellGeo(.15, Math.PI / 2 + .85, Math.PI * 2 - 1.7, 0, 2.05), fur); hood.position.set(0, hc + .01, -.012); hood.scale.set(1.08, 1.1, 1.15); hood.castShadow = true; b.head.add(hood);
+  const rim = b.add(new T.TorusGeometry(.12, .028, 6, 16, Math.PI * 1.5), furD, 0, hc + .015, .07, b.head); rim.rotation.set(0, 0, -Math.PI * .25); rim.scale.set(1, 1.1, 1);
+  [-1, 1].forEach(s => { const e = b.add(new T.ConeGeometry(.035, .09, 6), fur, s * .11, hc + .1, -.03, b.head); e.rotation.set(-.3, 0, s * -.7); });
+  const tip = b.add(new T.ConeGeometry(.08, .26, 8), fur, 0, hc + .1, -.17, b.head); tip.rotation.x = -2.1; shag(b, furD, b.head, [0, hc, .06], [.12, .13, .02], 12, .05, .02, { th0: .3, th1: 2.4, ph0: -1.4, phL: 2.8, droop: .2 });
+  cloth(b, furD, drape(.07, .17, .09, { folds: 10, amp: .014, tatter: 10, tatterLen: .03 }), b.chest, 0, .2, 0);
+  cloth(b, leather, drape(.1, .13, .11, { folds: 6, amp: .01, tatter: 6, tatterLen: .05 }), b.hips, 0, .02, 0);
+  // ice crest from the neck down the spine
+  [[.2, .16, .028], [.15, .14, .025], [.1, .12, .022], [.05, .095, .018], [0, .07, .015]].forEach(([y, l, r], i) => {
+    const c = b.add(new T.ConeGeometry(r, l, 5), i % 2 ? iceD : ice, 0, y, -.12 - i * .005, b.chest); c.rotation.x = -1.05 - i * .08;
+    [-1, 1].forEach(s => { if (i % 2) return; const d = b.add(new T.ConeGeometry(r * .6, l * .55, 5), iceD, s * .05, y - .01, -.1, b.chest); d.rotation.set(-1.1, 0, s * .5); });
+  });
+  glowEyes(b, 0xa8f2ff, .045, .125, .118, .018);
+  for (let i = 0; i < 4; i++) { const t = b.add(new T.ConeGeometry(.007, .022, 4), b.m(0xe8dfc6), (i - 1.5) * .022, .05, .135, b.head); t.rotation.x = Math.PI; }
+  clearFeet(b); b.legsJ.forEach(l => toes(b, skin, l.ankle, b.L));
+  clearHands(b);
+  const dagger = a => {
+    fist(b, skin, .036, a.hand);
+    const w = joint(a.hand, 0, -.03, .01);
+    b.add(new T.CylinderGeometry(.012, .014, .08, 6), leather, 0, .015, 0, w);
+    const bl = b.add(new T.ConeGeometry(.024, .26, 5), ice, 0, -.15, .012, w); bl.rotation.x = Math.PI; bl.scale.z = .55;
+    crystal(b, iceD, w, 0, -.03, .012, .022, [1.6, .6, 1]);
+    return w;
+  };
+  b.weapon = dagger(b.main); b.offBlade = dagger(b.off);
+  teleCone(b, 1.6);
+  return b;
+}
+
+// Frozen Crossbowman: a dead soldier sealed in ice; horned helm, fur mantle, crossbow; frost grown over one side
+function buildCrossbowman() {
+  M2_SEED = 37;
+  const b = rigBase(0);
+  humanoid(b, { skin: 0x9ab8cc, top: 0x4a5866, legs: 0x343c48, boots: 0x262b33, arm: 0x45505e, hand_c: 0x3a3028,
+    thigh: [.34, .07, .055], shin: [.33, .058, .045], upper: [.26, .062, .05], fore: [.24, .052, .042], chest: [.23, .21, .16], belly: [.17, .14, .13], shW: .24, head: .12 });
+  const iron = b.m(0x6c7886, { metalness: .55, roughness: .4 }), ironD = b.m(0x3c4450, { metalness: .5, roughness: .5 });
+  const fur = b.m(0xd6d0c4, { side: T.DoubleSide }), tab = b.m(0x26364e, { side: T.DoubleSide }), leather = b.m(0x3e2c20), boneC = b.m(0xd8d0bc);
+  const ice = b.m(0xc4ecff, { roughness: .15, metalness: .25, flatShading: true }), iceD = b.m(0x86c8ea, { roughness: .2, metalness: .2, flatShading: true });
+  swapHead(b, headGeo({ cheek: .86, jaw: .7, chin: .4, brow: .14, jawFwd: .02, nose: .04, len: 1.05 }), [1, 1.05, 1.02]);
+  swapTorso(b, { bh: b.L.belly[1] + .06, ch: .21, waist: .17, rib: .21, chest: .235, shoulder: .24, front: .82, backD: .74 }, iron);
+  const hc = b.L.head * .95;
+  glowEyes(b, 0x9ff0ff, .04, hc + .005, .108, .013, 1);
+  // helm: dome, brow band, nasal, cheek guards, horns curling out and up
+  const dome = new T.Mesh(shellGeo(.14, 0, Math.PI * 2, 0, 1.6), iron); dome.position.set(0, hc + .015, -.005); dome.scale.set(1.04, 1.08, 1.1); dome.castShadow = true; b.head.add(dome);
+  b.add(new T.TorusGeometry(.142, .014, 5, 24), ironD, 0, hc + .015, -.005, b.head).rotation.x = Math.PI / 2;
+  b.add(new T.BoxGeometry(.022, .085, .02), ironD, 0, hc - .02, .148, b.head);
+  [-1, 1].forEach(s => { const g = b.add(new T.BoxGeometry(.02, .09, .07), iron, s * .118, hc - .04, .05, b.head); g.rotation.y = s * -.3; });
+  [-1, 1].forEach(s => {
+    const pts = [V(s * .12, hc + .04, 0), V(s * .21, hc + .07, -.01), V(s * .27, hc + .15, -.02), V(s * .27, hc + .25, -.05), V(s * .23, hc + .31, -.08)];
+    for (let i = 0; i < pts.length - 1; i++) strut(b, boneC, pts[i], pts[i + 1], .03 - i * .006, .024 - i * .006, b.head, 6);
+  });
+  [[-.05, .14, .03], [.06, .12, -.04], [0, .145, -.07]].forEach(([x, y, z]) => crystal(b, ice, b.head, x, hc + y, z, .03, [1, 1.8, 1], [m2r(), m2r(), m2r() - .5]));
+  [-.03, 0, .03].forEach((x, i) => { const c = b.add(new T.ConeGeometry(.01, .05 + i % 2 * .02, 4), ice, x, hc - .1, .12, b.head); c.rotation.x = Math.PI; });
+  // fur mantle over the shoulders, tabard, mail skirt
+  cloth(b, fur, drape(.2, .33, .15, { folds: 12, amp: .02, tatter: 12, tatterLen: .04 }), b.chest, 0, b.L.chest[1] * 1.45 + .01, 0);
+  shag(b, fur, b.chest, [0, .3, 0], [.28, .06, .2], 14, .08, .03, { th0: .9, th1: 1.7, droop: .6 });
+  [.16, -.15].forEach(z => { const t = b.add(new T.BoxGeometry(.13, .3, .012), tab, 0, -.12, z, b.hips); t.rotation.x = z > 0 ? -.12 : .12; });
+  cloth(b, ironD, drape(.17, .23, .22, { folds: 12, amp: .008 }), b.hips, 0, .03, 0);
+  blob(b, leather, [.19, .035, .15], [0, .04, 0], b.spine);
+  b.add(new T.BoxGeometry(.05, .045, .02), iron, 0, .04, .15, b.spine);
+  b.arms.forEach(a => { plate(b, iron, ironD, .095, 1.15, a.sh, a.sd * .01, .02, 0, 1.1, .72, 1.1); cloth(b, leather, drape(.056, .05, .12, { folds: 0, seg: 10 }), a.el, 0, -.08, 0); });
+  b.legsJ.forEach(l => { const k = plate(b, iron, ironD, .06, 1.1, l.knee, 0, 0, .035, 1, .8, .9); k.rotation.x = Math.PI / 2 - .2; });
+  // frost sealed over the left side: shoulder, forearm and shin
+  [[b.off.sh, 0, .06, 0, .07], [b.off.sh, -.04, .02, .06, .05], [b.off.el, 0, -.12, .04, .05], [b.legsJ[0].knee, .03, -.16, .04, .06], [b.chest, -.15, .28, .1, .05]].forEach(([p, x, y, z, s]) =>
+    crystal(b, m2r() < .5 ? ice : iceD, p, x, y, z, s, [1, 1.7, 1], [m2r() - .5, m2r() * 3, m2r() - .5]));
+  clearHands(b); b.arms.forEach(a => fist(b, b.mt.hand, .046, a.hand));
+  clearFeet(b); b.legsJ.forEach(l => shoe(b, ironD, b.L, l.ankle, { w: 1.1 }));
+  const q = joint(b.hips, .15, .02, -.08); q.rotation.set(.3, 0, -.25);
+  b.add(new T.BoxGeometry(.07, .2, .05), leather, 0, -.05, 0, q);
+  for (let i = 0; i < 3; i++) b.add(new T.CylinderGeometry(.006, .006, .1, 4), b.m(0x8a6a44), (i - 1) * .018, .08, 0, q);
+  b.bow = crossbow(b, b.off.hand, false); b.weapon = b.bow;
+  crystal(b, ice, b.bow, .04, -.3, .02, .03, [1, 2, 1], [0, 0, .4]);
+  aimLine(b);
+  b.extra = animCrossbow;
+  return b;
+}
+function animCrossbow(e, md) {
+  if (e.state === 'windup') { const p = clamp(e.t / e.def.windup / .5, 0, 1); armTo(md.main, lerp(-.4, -1.38, p), lerp(0, -.75, p), lerp(-.4, -.75, p), 1, .2); md.head.rotation.y = -.35; }
+  else if (e.state === 'recover' && e.t < .2) { armTo(md.off, -1.3, -.45, -.05, 1, -.05); armTo(md.main, -1.2, -.7, -.7, 1, .2); md.chest.rotation.y = .45; md.spine.rotation.x -= .08; }
+}
+
+// Void Mite: a floating one-eyed orb with a crown of plates and dangling tendrils; it lunges with a toothed underside
+function buildMite() {
+  M2_SEED = 41;
+  const b = rigBase(0); b.kind = 'mite';
+  const shell = b.m(0x26183a, { roughness: .4, metalness: .25, flatShading: true }), shellL = b.m(0x473066, { roughness: .45, flatShading: true });
+  const flesh = b.m(0x5a3478, { roughness: .6 }), dk = basic(0x07040c), glow = basic(0xd08aff, { fog: false }), white = basic(0xf2e6ff, { fog: false });
+  const body = joint(b.rig, 0, .62, 0); b.body = body;
+  const orb = new T.Mesh(new T.IcosahedronGeometry(.2, 1), shell); orb.scale.set(1, .92, 1); orb.castShadow = true; body.add(orb);
+  [0, 1, 2, 3, 4].forEach(i => { const a = i / 5 * Math.PI * 2 + .3, p = new T.Mesh(shellGeo(.13, 0, Math.PI * 2, 0, .9, 10), shellL); p.position.set(Math.sin(a) * .1, .1, Math.cos(a) * .1 - .03); p.rotation.set(Math.cos(a) * .7, 0, -Math.sin(a) * .7); p.scale.set(.75, .6, .75); body.add(p); });
+  [[-.06, .2, -.06], [.07, .19, -.08], [0, .22, .02]].forEach(([x, y, z], i) => { const c = b.add(new T.ConeGeometry(.022, .1 + i * .02, 5), shellL, x, y, z, body); c.rotation.set(-.3 + z * 2, 0, -x * 3); });
+  [[-.1, .06, -.15], [.12, -.02, -.13], [-.02, -.06, -.19], [.15, .08, -.05]].forEach(p => blob(b, glow, [.03, .012, .03], p, body));
+  // the eye: socket, white, glowing iris, slit pupil, a heavy lid above
+  b.eye = joint(body, 0, .02, .15);
+  blob(b, dk, [.115, .11, .05], [0, 0, 0], b.eye);
+  blob(b, white, [.09, .088, .05], [0, 0, .02], b.eye);
+  blob(b, glow, [.05, .055, .02], [0, 0, .062], b.eye);
+  blob(b, dk, [.014, .042, .01], [0, 0, .078], b.eye);
+  const lid = b.add(new T.TorusGeometry(.1, .026, 6, 16, Math.PI), shellL, 0, .005, .03, b.eye); lid.rotation.x = -.35;
+  // toothed maw underneath
+  const w = joint(body, 0, -.14, .05);
+  blob(b, flesh, [.09, .035, .08], [0, 0, 0], w);
+  for (let i = 0; i < 7; i++) { const a = i / 7 * Math.PI * 2, t = b.add(new T.ConeGeometry(.012, .045, 4), b.m(0xe8dccc), Math.sin(a) * .07, -.02, Math.cos(a) * .06, w); t.rotation.x = Math.PI; }
+  b.weapon = w;
+  b.tend = [];
+  for (let i = 0; i < 6; i++) {
+    const a = i / 6 * Math.PI * 2 + .5, base = joint(body, Math.sin(a) * .12, -.1, Math.cos(a) * .12 - .02);
+    base.rotation.set(Math.cos(a) * .35, 0, -Math.sin(a) * .35);
+    let p = base; const segs = [];
+    for (let j = 0; j < 4; j++) {
+      const len = .1 - j * .012, r0 = .026 - j * .005, r1 = r0 - .005;
+      limb(b, j % 2 ? flesh : shell, [len, r0, Math.max(.004, r1)], p);
+      segs.push(p);
+      p = joint(p, 0, -len, 0);
+    }
+    blob(b, glow, [.014, .014, .014], [0, 0, 0], p);
+    b.tend.push({ segs, a, ph: i * 1.3 });
+  }
+  const h = halo(0xa05aff, .9, .22); h.position.y = -.05; body.add(h);
+  teleCone(b, 1.5);
+  b.custom = animMite; b.die = dieFloat;
+  return b;
+}
+function animMite(e, md, moving, time) {
+  const ph = (e.walk || 0) * .3 + time;
+  md.body.position.set(0, .62 + Math.sin(ph * 3.1) * .05, 0);
+  md.body.rotation.set(moving ? .3 : .05, 0, Math.sin(ph * 1.7) * .08);
+  let spread = 0;
+  if (e.state === 'windup') { const p = clamp(e.t / e.def.windup, 0, 1); md.body.rotation.x = -.6 * p; md.body.position.y += .1 * p; spread = p; }
+  else if (e.state === 'strike') { md.body.rotation.x = .75; md.body.position.y -= .12; spread = -.4; }
+  md.tend.forEach(t => t.segs.forEach((s, j) => {
+    if (!j) { s.rotation.x = Math.cos(t.a) * (.35 + spread * .5) + (moving ? -.25 : 0); s.rotation.z = -Math.sin(t.a) * (.35 + spread * .5); return; }
+    s.rotation.x = Math.sin(time * 5 + t.ph + j * .9) * .28 + (moving ? -.18 : 0);
+    s.rotation.z = Math.cos(time * 4 + t.ph + j * .7) * .2;
+  }));
+  const blink = (Math.sin(time * .9 + (e.walk || 0)) > .985) ? .15 : 1;
+  md.eye.scale.set(1, e.state === 'windup' ? 1.15 : blink, 1);
+}
+function dieFloat(md, k) {
+  if (md.body) { md.body.position.y = lerp(md.body.position.y, .2, easeOut(k)); md.body.rotation.z = 1.4 * easeOut(k); }
+  if (md.chunks) md.chunks.forEach(c => { c.g.position.copy(c.home).addScaledVector(c.dir, k * .5); c.g.position.y -= k * c.home.y * .6; c.g.rotation.x = k * c.ph; });
+}
+
+// Void Acolyte: a hooded cultist with a blank glowing mask; orbs circle both hands and gather before each bolt
+function buildAcolyte() {
+  M2_SEED = 53;
+  const b = rigBase(0);
+  humanoid(b, { skin: 0x1a1024, top: 0x2b1b42, legs: 0x1e1230, boots: 0x140c1e, arm: 0x2b1b42, hand_c: 0x3c2c52, slouch: .12,
+    thigh: [.36, .06, .05], shin: [.35, .05, .04], upper: [.27, .05, .04], fore: [.25, .042, .034], chest: [.2, .2, .14], belly: [.15, .14, .11], shW: .22, head: .115 });
+  const robe = b.mt.top, inner = b.m(0x0e0818, { side: T.DoubleSide }), trim = b.m(0x9a82c8, { metalness: .55, roughness: .35, side: T.DoubleSide });
+  const voidM = basic(0x030206, { side: T.DoubleSide }), maskM = basic(0xe6d6ff, { fog: false, side: T.DoubleSide }), glowC = 0xc08aff;
+  robe.side = T.DoubleSide;
+  const hc = b.L.head * .95;
+  const hood = new T.Mesh(shellGeo(.165, Math.PI / 2 + .55, Math.PI * 2 - 1.1, 0, 2.3), robe); hood.position.set(0, hc + .02, .02); hood.scale.set(1, 1.18, 1.22); hood.castShadow = true; b.head.add(hood);
+  const deep = new T.Mesh(shellGeo(.15, Math.PI / 2 + .5, Math.PI * 2 - 1, 0, 2.2), voidM); deep.position.set(0, hc + .02, .015); deep.scale.set(1, 1.15, 1.18); b.head.add(deep);
+  const hp = b.add(new T.ConeGeometry(.12, .34, 10), robe, 0, hc + .17, -.1, b.head); hp.rotation.x = -.85; hp.scale.x = .85;
+  const mask = new T.Mesh(shellGeo(.105, Math.PI / 2 - 1.05, 2.1, .45, 1.9, 16), maskM); mask.position.set(0, hc - .02, .02); mask.scale.set(.9, 1.1, 1); b.head.add(mask);
+  const mh = halo(glowC, .45, .35); mh.position.set(0, hc, .1); b.head.add(mh);
+  cloth(b, robe, drape(.13, .3, .2, { folds: 7, amp: .008, seg: 24 }), b.chest, 0, b.L.chest[1] * 1.45, 0);
+  cloth(b, trim, drape(.295, .302, .02, { folds: 7, amp: .008, seg: 24, t0: .9, t1: 1 }), b.chest, 0, b.L.chest[1] * 1.45 - .2, 0);
+  cloth(b, inner, drape(.2, .38, .9, { folds: 9, amp: .014 }), b.hips, 0, .02, 0);
+  cloth(b, robe, drape(.22, .44, .93, { th0: .45, thL: Math.PI * 2 - .9, folds: 10, amp: .022, amp2: .01, tatter: 10, tatterLen: .06 }), b.hips, 0, .03, 0);
+  const sig = b.add(new T.OctahedronGeometry(.035, 0), basic(glowC, { fog: false }), 0, .22, .16, b.chest); sig.scale.set(.8, 1.4, .4);
+  b.arms.forEach(a => cloth(b, robe, drape(.055, .13, .25, { folds: 6, amp: .01, tatter: 6, tatterLen: .05 }), a.el, 0, .02, 0));
+  clearHands(b); b.arms.forEach(a => { blob(b, b.mt.hand, [.04, .05, .03], [0, -.04, 0], a.hand); for (let i = 0; i < 4; i++) { const f = b.add(new T.CylinderGeometry(.007, .005, .06, 4), b.mt.hand, (i - 1.5) * .016, -.1, .01, a.hand); f.rotation.x = .2; } });
+  b.orbG = b.arms.map(a => {
+    const g = joint(a.hand, 0, -.08, .02);
+    for (let i = 0; i < 3; i++) { const o = glowMesh(new T.SphereGeometry(.03, 10, 8), glowC, .3), an = i / 3 * Math.PI * 2; o.position.set(Math.cos(an) * .11, 0, Math.sin(an) * .11); g.add(o); }
+    return g;
+  });
+  b.weapon = b.orbG[1];
+  aimLine(b, 0xc06aff);
+  b.extra = animAcolyte;
+  return b;
+}
+function animAcolyte(e, md, time) {
+  md.chest.rotation.y = 0; md.head.rotation.y = 0;
+  let p = 0;
+  if (e.state === 'windup') {
+    p = clamp(e.t / e.def.windup, 0, 1); const q = easeOut(p);
+    armTo(md.main, lerp(-.5, -1.45, q), lerp(-.1, -.4, q), lerp(-.9, -.25, q), 1, .1); armTo(md.off, lerp(-.5, -1.45, q), lerp(.1, .4, q), lerp(-.9, -.25, q), 1, -.1);
+    md.spine.rotation.x -= .08 * q;
+  } else if (e.state === 'recover' && e.t < .25) { armTo(md.main, -1.6, -.25, -.05, 1); armTo(md.off, -1.6, .25, -.05, 1); md.spine.rotation.x += .12; }
+  else { armTo(md.main, -.45, -.1, -1, 1, .18); armTo(md.off, -.45, .1, -1, 1, -.18); }
+  md.orbG.forEach((g, i) => { g.rotation.set(.35, time * (2.6 + p * 7) * (i ? 1 : -1), 0); g.scale.setScalar(1 + p * .7); });
+}
+
+// Spire Colossus: shards of black crystal held together by violet light around a bright core; one oversized crystal fist
+function buildColossus() {
+  M2_SEED = 67;
+  const b = rigBase(0); b.kind = 'colossus';
+  const cr = b.m(0x18121f, { roughness: .22, metalness: .4, flatShading: true }), crL = b.m(0x2e2342, { roughness: .28, metalness: .35, flatShading: true });
+  const glowC = 0xb06aff, glow = basic(glowC, { fog: false });
+  const body = joint(b.rig, 0, 1.08, 0); b.body = body;
+  b.chunks = [];
+  const chunk = (parent, x, y, z, s, sc, mat, out) => {
+    const g = joint(parent, x, y, z); crystal(b, mat || cr, g, 0, 0, 0, s, sc, [m2r() * .2 - .1, m2r() * .8, -x * .6]);
+    const home = V(x, y, z), dir = (out || V(x, y * .3, z)).clone(); if (dir.lengthSq() < 1e-4) dir.set(0, 1, 0); dir.normalize();
+    b.chunks.push({ g, home, dir, ph: m2r() * 6 }); return g;
+  };
+  b.core = glowMesh(new T.IcosahedronGeometry(.1, 1), 0xe6c8ff, 1.3); b.core.position.set(0, .05, .04); body.add(b.core);
+  const ha = halo(glowC, 1.4, .3); ha.position.set(0, .05, 0); body.add(ha);
+  chunk(body, -.19, .16, .05, .26, [.75, 1.5, .6]); chunk(body, .2, .18, .05, .27, [.75, 1.5, .6], crL);
+  chunk(body, 0, .18, -.17, .26, [1.5, 1.2, .55]); chunk(body, 0, -.17, .03, .16, [1.3, .8, 1], crL);
+  chunk(body, -.4, .36, 0, .14, [1, 1.2, 1], crL); chunk(body, .44, .38, 0, .19, [1.1, 1.2, 1]);
+  chunk(body, 0, -.47, 0, .17, [.8, 2.4, .8], cr, V(0, -1, 0));
+  // head: a narrow shard with two slit eyes
+  b.headC = chunk(body, 0, .58, .05, .13, [.8, 1.5, .8], crL, V(0, 1, 0));
+  [-1, 1].forEach(s => { const e = b.add(new T.BoxGeometry(.04, .014, .01), glow, s * .03, .03, .1, b.headC); e.rotation.z = s * -.3; });
+  // veins of light between shards
+  [[0, .2, .12, 0], [0, -.05, .1, 0], [-.29, .3, .03, .9], [.31, .32, .03, -.9], [0, .42, .05, 0]].forEach(([x, y, z, r]) => { const v = b.add(new T.BoxGeometry(.012, .12, .012), glow, x, y, z, body); v.rotation.z = r; });
+  // left arm: three small shards; right arm: two shards and the great fist
+  b.armL = joint(body, -.44, .26, 0);
+  [[-.2, .11], [-.42, .1], [-.6, .1]].forEach(([y, s]) => chunk(b.armL, 0, y, 0, s, [.9, 1.6, .9], cr, V(-1, 0, 0)));
+  b.armR = joint(body, .48, .28, 0);
+  chunk(b.armR, 0, -.22, 0, .17, [1, 1.5, 1], crL, V(1, 0, 0)); chunk(b.armR, .02, -.5, .02, .18, [1, 1.4, 1], cr, V(1, 0, 0));
+  b.fist = joint(b.armR, .02, -.9, .04);
+  crystal(b, cr, b.fist, 0, 0, 0, .3, [1.05, 1, 1]);
+  crystal(b, crL, b.fist, .12, -.05, .16, .18, [1, 1, 1]); crystal(b, crL, b.fist, -.12, -.06, .16, .17, [1, 1, 1]);
+  [-.12, -.04, .04, .12].forEach(x => { const k = b.add(new T.ConeGeometry(.04, .14, 4), crL, x, -.22, .1, b.fist); k.rotation.x = Math.PI; });
+  [[.0, .06, .26], [.16, -.02, .2], [-.15, 0, .2]].forEach(([x, y, z]) => blob(b, glow, [.02, .05, .01], [x, y, z], b.fist));
+  b.fist.add(halo(glowC, 1, .25));
+  b.orbit = joint(body, 0, -.3, 0);
+  [0, 1, 2, 3].forEach(i => { const a = i / 4 * Math.PI * 2; crystal(b, i % 2 ? crL : cr, b.orbit, Math.cos(a) * .42, (i % 2) * .08, Math.sin(a) * .42, .06, [1, 1.8, 1]); });
+  b.weapon = b.fist;
+  slamDecal(b, 1.92);
+  b.custom = animColossus; b.die = dieFloat;
+  return b;
+}
+function animColossus(e, md, moving, time) {
+  md.body.position.set(0, 1.08 + Math.sin(time * 1.8) * .05, 0);
+  md.body.rotation.set(moving ? .1 : 0, 0, Math.sin(time * 1.1) * .03);
+  let spread = 0, up = 0, slam = 0;
+  if (e.state === 'windup') { const p = easeOut(clamp(e.t / e.def.windup, 0, 1)); spread = p; up = p; }
+  else if (e.state === 'recover') { slam = 1 - clamp((e.t - .35) / .6, 0, 1); spread = slam * .3; }
+  md.chunks.forEach(c => { c.g.position.copy(c.home).addScaledVector(c.dir, spread * .16 + Math.sin(time * 2 + c.ph) * .012); c.g.rotation.y = Math.sin(time * .7 + c.ph) * .15 + spread * c.ph * .1; });
+  md.armR.rotation.set(lerp(lerp(-.3, -1, slam), -2.7, up), 0, lerp(.15, -.1, up));
+  md.armL.rotation.set(Math.sin(time * 1.6) * .12 - slam * .4 - up * .4, 0, -.15 - up * .2);
+  md.body.rotation.x += slam * .4 - up * .15; md.body.position.y += up * .12 - slam * .25;
+  md.orbit.rotation.y = time * (1.2 + spread * 3);
+  md.core.scale.setScalar(1 + Math.sin(time * 4) * .1 + spread * .6);
+}
+
+// Void Herald: hovers on a tapering robe, four arms, horned mask, a halo of void blades turning behind the head
+function buildHerald(gc) {
+  M2_SEED = 79;
+  const b = rigBase(0), G = gc.glow;
+  humanoid(b, { skin: 0x1a1226, top: gc.robe, legs: gc.robe, boots: gc.robe, arm: gc.robe, hand_c: 0x2c2040,
+    upper: [.28, .055, .045], fore: [.27, .045, .035], chest: [.24, .22, .17], belly: [.15, .15, .12], shW: .26 });
+  const robe = b.mt.top, inner = b.m(0x0c0814, { side: T.DoubleSide }), metal = b.m(0x8c7cb8, { metalness: .65, roughness: .3, side: T.DoubleSide });
+  const maskM = b.m(0xc8bedc, { metalness: .5, roughness: .32, side: T.DoubleSide }), blade = b.m(0x140e20, { metalness: .5, roughness: .22, flatShading: true });
+  const glowM = basic(G, { fog: false }), voidM = basic(0x030206, { side: T.DoubleSide });
+  robe.side = T.DoubleSide;
+  stripLimbs(b);
+  swapTorso(b, { bh: b.L.belly[1] + .06, ch: .22, waist: .15, rib: .22, chest: .25, shoulder: .27, front: .78, backD: .7 }, robe);
+  const hc = b.L.head * .95;
+  // horned mask over a void face
+  blob(b, voidM, [.12, .13, .12], [0, hc, 0], b.head);
+  const mask = new T.Mesh(shellGeo(.13, Math.PI / 2 - .95, 1.9, .2, 1.9, 18), maskM); mask.position.set(0, hc, .0); mask.scale.set(.98, 1.25, 1.05); mask.castShadow = true; b.head.add(mask);
+  [-1, 1].forEach(s => { const e = b.add(new T.BoxGeometry(.05, .014, .02), glowM, s * .04, hc + .02, .135, b.head); e.rotation.z = s * -.3; });
+  b.add(new T.BoxGeometry(.012, .09, .02), glowM, 0, hc + .1, .12, b.head);
+  [-1, 1].forEach(s => {
+    const big = [V(s * .08, hc + .1, -.02), V(s * .16, hc + .2, -.06), V(s * .2, hc + .34, -.14), V(s * .18, hc + .46, -.26)];
+    for (let i = 0; i < 3; i++) strut(b, maskM, big[i], big[i + 1], .03 - i * .008, .022 - i * .008, b.head, 6);
+    const sm = [V(s * .11, hc + .02, -.02), V(s * .19, hc + .06, -.08), V(s * .23, hc + .14, -.15)];
+    for (let i = 0; i < 2; i++) strut(b, metal, sm[i], sm[i + 1], .018 - i * .006, .012 - i * .005, b.head, 5);
+  });
+  // collar, chest ribs, robe tapering into a trailing point
+  cloth(b, robe, drape(.15, .38, .22, { folds: 8, amp: .008, seg: 24 }), b.chest, 0, b.L.chest[1] * 1.45, 0);
+  cloth(b, metal, drape(.375, .382, .022, { folds: 8, amp: .008, seg: 24, t0: .9, t1: 1 }), b.chest, 0, b.L.chest[1] * 1.45 - .22, 0);
+  for (let i = 0; i < 3; i++) b.add(new T.TorusGeometry(.2 - i * .02, .01, 4, 18, Math.PI * .8), metal, 0, .12 + i * .065, .03, b.chest).rotation.set(0, 0, Math.PI * .1);
+  b.tailJ = joint(b.hips, 0, .03, 0);
+  cloth(b, robe, drape(.24, .1, 1.05, { folds: 9, amp: .022, amp2: .01, tatter: 9, tatterLen: .14 }), b.tailJ, 0, 0, 0);
+  cloth(b, inner, drape(.2, .06, .9, { folds: 0 }), b.tailJ, 0, -.02, 0);
+  // the second pair of arms, lower on the ribcage
+  b.arms2 = [-1, 1].map(sd => {
+    const sh = joint(b.chest, sd * .2, .08, .02); sh.rotation.order = 'YXZ';
+    blob(b, robe, [.05, .05, .05], [0, 0, 0], sh); limb(b, robe, [.24, .045, .038], sh);
+    const el = joint(sh, 0, -.24, 0); limb(b, robe, [.22, .038, .03], el);
+    cloth(b, robe, drape(.05, .11, .2, { folds: 6, amp: .01, tatter: 6, tatterLen: .05 }), el, 0, .02, 0);
+    const hand = joint(el, 0, -.22, 0); fist(b, b.mt.hand, .04, hand);
+    blob(b, glowM, [.022, .022, .022], [0, -.08, .03], hand);
+    return { sh, el, hand, sd };
+  });
+  b.arms.forEach(a => cloth(b, robe, drape(.06, .14, .28, { folds: 6, amp: .012, tatter: 6, tatterLen: .05 }), a.el, 0, .02, 0));
+  // halo of void blades behind the head
+  b.ring = joint(b.chest, 0, b.L.chest[1] * 1.45 + .26, -.24);
+  b.ring.add(halo(G, 1.1, .3));
+  b.ring.add(new T.Mesh(new T.TorusGeometry(.3, .008, 4, 40), glowM));
+  b.blades = [];
+  for (let i = 0; i < 8; i++) {
+    const a = i / 8 * Math.PI * 2, g = joint(b.ring, Math.sin(a) * .42, Math.cos(a) * .42, 0); g.rotation.z = -a;
+    crystal(b, blade, g, 0, 0, 0, .1, [.35, 1.6, .12]);
+    b.add(new T.BoxGeometry(.008, .2, .008), glowM, 0, -.02, .015, g);
+    b.blades.push(g);
+  }
+  clearHands(b, [b.main]); fist(b, b.mt.hand, .046, b.main.hand);
+  const w = joint(b.main.hand, 0, -.03, 0);
+  b.add(new T.CylinderGeometry(.026, .03, 1.8, 8), b.m(0x120c1a), 0, .25, 0, w);
+  [-.2, .7].forEach(y => b.add(new T.CylinderGeometry(.036, .036, .04, 8), metal, 0, y, 0, w));
+  [-1, 1].forEach(s => { const c = b.add(new T.TorusGeometry(.13, .016, 4, 16, Math.PI * .75), metal, 0, 1.18, 0, w); c.rotation.set(0, s > 0 ? 0 : Math.PI, Math.PI * .62); });
+  b.orb = b.add(new T.OctahedronGeometry(.09, 0), glowM, 0, 1.2, 0, w); b.orb.scale.set(1, 1.5, 1);
+  b.orb.add(halo(G, 1.4, .6));
+  b.weapon = w;
+  b.souls = [0, 1, 2].map(() => { const o = glowMesh(new T.OctahedronGeometry(.08, 0), G, .7); b.root.add(o); return o; });
+  b.extra = animHerald;
+  b.root.scale.setScalar(1.3);
+  return b;
+}
+function animHerald(e, md, time) {
+  const busy = ['volley', 'erupt', 'roar', 'ring', 'spiral', 'shift'].includes(e.state);
+  const [lo, ro] = md.arms2;
+  if (e.state === 'erupt' || e.state === 'roar') { armTo(lo, -.4, .4, -.3, 1, -1.2); armTo(ro, -.4, -.4, -.3, 1, 1.2); }
+  else if (e.state === 'volley') { armTo(lo, -1.3, .3, -.2, 1, -.1); armTo(ro, -1.3, -.3, -.2, 1, .1); }
+  else { const s = Math.sin(time * 1.5) * .08; armTo(lo, -.7 + s, .55, -1.5, 1, -.1); armTo(ro, -.7 - s, -.55, -1.5, 1, .1); }
+  md.ring.rotation.z = time * (busy ? 1.6 : .45);
+  const fl = e.state === 'erupt' ? 1.3 : busy ? 1.12 : 1;
+  md.blades.forEach((g, i) => { g.scale.setScalar(fl); g.rotation.y = Math.sin(time * 2 + i) * .3; });
+  md.tailJ.rotation.set(Math.sin(time * 1.7) * .08 + .1, 0, Math.sin(time * 1.3) * .06);
+  md.souls.forEach(o => o.rotation.y = time * 2);
+}
+
 /* ---------- game state ---------- */
 const TYPES = {
   goblin: { build: buildGoblin, hp: 40, r: .36, speed: 3.3, windup: .42, recover: .55, poise: false, turn: 9 },
@@ -6217,12 +6615,12 @@ const TYPES = {
   reaperboss: { build: buildReaper, hp: 1500, r: .7, speed: 3.3, windup: .6, recover: .55, poise: true, turn: 6, ai: 'reaper', boss: true, title: 'The Reaper', xp: 200, blood: 0x6aff9a },
   reaper:  { build: buildReaper, hp: 5500, r: .7, speed: 3.3, windup: .6, recover: .55, poise: true, turn: 6, ai: 'reaper', boss: true, title: 'The Reaper', xp: 400, gold: 260, blood: 0x6aff9a },
   hoarder: { build: buildHoarder, hp: 420, r: .42, speed: 3.9, windup: .3, recover: .5, poise: true, turn: 10, ai: 'hoarder', bar: true, title: 'Gilded Hoarder', xp: 120, gold: 160, blood: 0xffd23f },
-  icegob:      { build: buildGoblin, hp: 46, r: .36, speed: 3.4, windup: .4, recover: .55, poise: false, turn: 9, ai: 'goblin', tint: 0x8fc8ff, onHit: 'chill', xp: 5, gold: 1, cost: 1, blood: 0x9fe3ff },
-  frostarcher: { build: buildArcher, hp: 38, r: .36, speed: 2.6, windup: .8, recover: .35, poise: false, turn: 7, ai: 'archer', tint: 0x9fe3ff, onHit: 'chill', shotColor: 0x9fe3ff, xp: 6, gold: 2, cost: 1.3, blood: 0x9fe3ff },
-  yeti:        { build: buildOrc, hp: 160, r: .66, speed: 2.1, windup: .9, recover: 1.1, poise: true, turn: 4, ai: 'orc', tint: 0xeef6ff, onHit: 'chill', xp: 13, gold: 6, cost: 2.6, dmgMul: 1.1, scale: 1.12, blood: 0xdff4ff },
-  voidling:    { build: buildSkitter, hp: 32, r: .34, speed: 4.8, windup: .32, recover: .4, poise: false, turn: 11, ai: 'goblin', tint: 0x9a6aff, onHit: 'weak', xp: 4, gold: 1, cost: .7, dmgMul: .9, blood: 0xb06aff },
-  voidimp:     { build: buildImp, hp: 42, r: .34, speed: 3.0, windup: .7, recover: .3, poise: false, turn: 8, ai: 'archer', tint: 0x8a5aff, onHit: 'weak', shotColor: 0xc08aff, fire: true, xp: 7, gold: 2, cost: 1.3, dmgMul: 1.2, blood: 0xb06aff },
-  voidbrute:   { build: buildBrute, hp: 185, r: .66, speed: 2.2, windup: .9, recover: 1, poise: true, turn: 4, ai: 'orc', tint: 0x7a4aff, onHit: 'weak', xp: 14, gold: 7, cost: 2.6, dmgMul: 1.2, blood: 0xb06aff },
+  icegob:      { build: buildGremlin, hp: 46, r: .36, speed: 3.4, windup: .4, recover: .55, poise: false, turn: 9, ai: 'goblin', onHit: 'chill', xp: 5, gold: 1, cost: 1, blood: 0x9fe3ff },
+  frostarcher: { build: buildCrossbowman, hp: 38, r: .36, speed: 2.6, windup: .8, recover: .35, poise: false, turn: 7, ai: 'archer', onHit: 'chill', shotColor: 0x9fe3ff, xp: 6, gold: 2, cost: 1.3, blood: 0x9fe3ff },
+  yeti:        { build: buildYeti, hp: 160, r: .66, speed: 2.1, windup: .9, recover: 1.1, poise: true, turn: 4, ai: 'orc', onHit: 'chill', xp: 13, gold: 6, cost: 2.6, dmgMul: 1.1, scale: 1.12, blood: 0xdff4ff },
+  voidling:    { build: buildMite, hp: 32, r: .34, speed: 4.8, windup: .32, recover: .4, poise: false, turn: 11, ai: 'goblin', onHit: 'weak', xp: 4, gold: 1, cost: .7, dmgMul: .9, blood: 0xb06aff },
+  voidimp:     { build: buildAcolyte, hp: 42, r: .34, speed: 3.0, windup: .7, recover: .3, poise: false, turn: 8, ai: 'archer', onHit: 'weak', shotColor: 0xc08aff, fire: true, xp: 7, gold: 2, cost: 1.3, dmgMul: 1.2, blood: 0xb06aff },
+  voidbrute:   { build: buildColossus, hp: 185, r: .66, speed: 2.2, windup: .9, recover: 1, poise: true, turn: 4, ai: 'orc', onHit: 'weak', xp: 14, gold: 7, cost: 2.6, dmgMul: 1.2, blood: 0xb06aff },
   final:       { build: () => buildFinal({ robe: 0x08080c, glow: 0xff3b6a }), hp: 3200, r: .9, speed: 2.4, windup: .6, recover: .9, poise: true, turn: 5, ai: 'final', boss: true, title: 'The Lightless One', xp: 500, gold: 400, scale: 1.25, blood: 0xff3b6a },
   boss:   { build: buildBoss,   hp: 1150, r: .95, speed: 2.4, windup: .8, recover: 1.3, poise: true, turn: 3, ai: 'boss', boss: true },
   skitter: { build: buildSkitter, hp: 24, r: .34, speed: 4.4, windup: .34, recover: .45, poise: false, turn: 11, ai: 'goblin', xp: 3, gold: 1, cost: .7, dmgMul: .8, blood: 0xff6a2a },
@@ -7359,7 +7757,8 @@ function animateEnemy(e, dt, time) {
   e.walk += dt * (moving ? 10 : 0);
   if (e.state === 'spawn') md.root.position.y = -1.1 * (1 - easeOut(e.t / .7));
 
-  if (md.kind === 'spider') {
+  if (md.custom) { rig.position.y = 0; md.custom(e, md, moving, time, dt); }
+  else if (md.kind === 'spider') {
     rig.position.y = 0;
     animateSpider(e, md, moving, time);
   } else {
@@ -7434,12 +7833,14 @@ function animateEnemy(e, dt, time) {
       if (e.state === 'spawn') md.root.position.y = -2.4 * (1 - easeOut(e.t / 1.4));
     }
   }
+  if (md.extra && !md.custom) md.extra(e, md, time, dt);
   if (e.state === 'stun' && !e.frozen) { rig.rotation.z = Math.sin(time * 18) * .16; if (md.neck) md.neck.rotation.x = .5; }
   if (e.dead) {
     const kk = clamp(e.t / .45, 0, 1);
     if (e.escaped) md.root.position.y = -1.8 * clamp(e.t / .6, 0, 1);
     else {
-      if (md.kind === 'spider') { md.body.rotation.z = Math.PI * easeOut(kk); md.body.position.y = .26 - .1 * kk; }
+      if (md.die) md.die(md, kk, e);
+      else if (md.kind === 'spider') { md.body.rotation.z = Math.PI * easeOut(kk); md.body.position.y = .26 - .1 * kk; }
       else { crumple(md, kk); rig.rotation.x = -1.4 * easeOut(kk); }
       md.root.position.y = -.9 * clamp((e.t - .5) / .5, 0, 1);
     }

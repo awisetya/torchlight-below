@@ -580,7 +580,8 @@ function inkWash(mat) {
 const INK_EDGE = new T.MeshBasicMaterial({ color: new T.Color(0x1e1612).convertSRGBToLinear(), side: T.BackSide, fog: false, toneMapped: false });
 INK_EDGE.onBeforeCompile = sh => { sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n vec4 iwN4 = projectionMatrix * modelViewMatrix * vec4(normal, 0.0); gl_Position.xy += normalize(iwN4.xy + 1e-5) * 0.0042 * gl_Position.w;'); };
 function inkBig(o) { const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); o.updateWorldMatrix(true, false); const sc = o.matrixWorld.getMaxScaleOnAxis(); return g.boundingSphere.radius * sc > .045; }
-function inkify(root) { root.traverse(o => { if (o.isMesh && !o.isInstancedMesh && !o.userData.inked && !o.userData.isEdge && o.material && o.material.isMeshStandardMaterial && o.geometry && o.geometry.attributes.normal && inkBig(o)) { o.userData.inked = 1; const h = new T.Mesh(o.geometry, INK_EDGE); h.userData.isEdge = 1; h.castShadow = false; h.raycast = () => {}; o.add(h); } }); }
+const INK_ON = false;
+function inkify(root) { if (!INK_ON) return; root.traverse(o => { if (o.isMesh && !o.isInstancedMesh && !o.userData.inked && !o.userData.isEdge && o.material && o.material.isMeshStandardMaterial && o.geometry && o.geometry.attributes.normal && inkBig(o)) { o.userData.inked = 1; const h = new T.Mesh(o.geometry, INK_EDGE); h.userData.isEdge = 1; h.castShadow = false; h.raycast = () => {}; o.add(h); } }); }
 const basic = (color, o = {}) => new T.MeshBasicMaterial(Object.assign({ color }, o));
 
 // soft, rounded boxes instead of hard-edged ones
@@ -6152,7 +6153,7 @@ function bakeStatic(model) {
     list.forEach(c => p.remove(c)); p.add(m);
   }
   // one ink outline per joint instead of one per part
-  if (typeof INK_EDGE === 'undefined') return;
+  if (typeof INK_EDGE === 'undefined' || !INK_ON) return;
   const joints = new Set(); root.traverse(o => { if (o.isMesh && o.parent && !keep.has(o)) joints.add(o.parent); });
   joints.forEach(p => {
     const list = p.children.filter(c => c.isMesh && !c.isInstancedMesh && !keep.has(c) && !c.children.length && c.visible && c.material && c.material.isMeshStandardMaterial && !c.material.transparent && c.geometry && c.geometry.attributes.normal);
